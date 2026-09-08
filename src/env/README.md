@@ -48,6 +48,7 @@ Current aliases:
 
 | Alias | Variable |
 |-------|----------|
+| baro | BARO_DB_URL |
 | deepseek | DEEPSEEK_API_KEY |
 | exa | EXA_API_KEY |
 | hypercharm | HYPERCHARM_API_KEY |
@@ -55,6 +56,7 @@ Current aliases:
 | opencode | OPENCODE_API_KEY |
 | openrouter | OPENROUTER_API_KEY |
 | synthetic | SYNTHETIC_API_KEY |
+| terr | TERR_DB_URL |
 | zro | ZRO_API_KEY |
 
 ## Shell Output
