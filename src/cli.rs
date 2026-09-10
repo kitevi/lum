@@ -307,6 +307,20 @@ pub enum YtCommand {
         #[usage(required = true)]
         urls: Vec<String>,
     },
+    /// Print channel RSS feed URL(s) for YouTube video or channel URL(s).
+    Rss {
+        /// Print bare ID(s) instead of feed URL(s).
+        ///
+        /// With --videos-only, prints the playlist ID instead.
+        #[usage(long)]
+        id_only: bool,
+        /// Print the long-form-videos-only feed (excludes shorts and live).
+        #[usage(long)]
+        videos_only: bool,
+        /// YouTube video or channel URL(s). Playlists rejected.
+        #[usage(required = true)]
+        urls: Vec<String>,
+    },
 }
 
 #[derive(Debug, usage::Subcommands)]

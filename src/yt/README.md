@@ -8,6 +8,7 @@
 lum yt aud <URL...>             # Audio → ~/Music
 lum yt vid [--height N] <URL...> # Video → ~/Movies
 lum yt alb <URL...>             # Album/playlist → ~/Music
+lum yt rss [--id-only] [--videos-only] <URL...>  # Channel RSS feed URL(s)
 ```
 
 ## Dependencies
@@ -17,6 +18,7 @@ lum yt alb <URL...>             # Album/playlist → ~/Music
 
 ## Architecture
 
+- `rss.rs` — video/channel classification (playlists rejected), channel-ID resolution via a single `yt-dlp -J --flat-playlist` fetch, and feed-URL builders (per-channel `channel_id` feed plus long-form-only `UULF` playlist feed)
 - `mod.rs` — CLI dispatch, ffmpeg check, yt-dlp invocation with `-P` for output directory
 - `args.rs` — argument construction for each subcommand (base flags, format selectors, output templates, metadata cleanup)
 - `deps.rs` — yt-dlp binary resolution (`$PATH` → auto-provisioned → error)

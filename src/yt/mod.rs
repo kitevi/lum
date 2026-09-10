@@ -1,11 +1,12 @@
 pub mod args;
 mod deps;
+pub mod rss;
 
 pub(crate) use deps::resolve_yt_dlp;
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::cli::YtCommand;
 use crate::ffmpeg;
@@ -29,6 +30,31 @@ pub async fn run(command: YtCommand) -> Result<()> {
             let args = args::album_args(&urls);
             let dest_dir = output_dirs::audio_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
+        }
+        YtCommand::Rss {
+            id_only,
+            videos_only,
+            urls,
+        } => {
+            for raw_url in &urls {
+                let channel_id = rss::resolve_channel_id(&yt_dlp, raw_url)?;
+                // NOTE: resolve_channel_id only returns validated IDs, so the None
+                // cases below are defensive (reachable only if validation changes).
+                let line = match (videos_only, id_only) {
+                    (true, true) => {
+                        rss::videos_only_playlist_id(&channel_id).with_context(|| {
+                            format!("invalid channel_id resolved for {raw_url}: {channel_id}")
+                        })?
+                    }
+                    (true, false) => rss::videos_only_feed_url(&channel_id).with_context(|| {
+                        format!("invalid channel_id resolved for {raw_url}: {channel_id}")
+                    })?,
+                    (false, true) => channel_id,
+                    (false, false) => rss::channel_feed_url(&channel_id),
+                };
+                println!("{line}");
+            }
+            Ok(())
         }
     }
 }
