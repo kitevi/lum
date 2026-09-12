@@ -98,10 +98,45 @@ pub(crate) fn emit_fish_init(state: &BTreeMap<String, String>, bin: &std::path::
 end
 function lum --description 'lum wrapper (auto eval env set/unset)'
   if test (count $argv) -ge 2; and test "$argv[1]" = env; and contains -- "$argv[2]" set unset
-    if contains -- --shell $argv
-      eval (command lum $argv)
+    # Detect an explicit --shell selection (`--shell X` or `--shell=X`).
+    set -l req_shell ""
+    set -l i 3
+    while test $i -le (count $argv)
+      if test "$argv[$i]" = --
+        break
+      else if contains -- "$argv[$i]" --help -h
+        command lum $argv
+        return $status
+      else if test "$argv[$i]" = --shell
+        set i (math $i + 1)
+        if test $i -le (count $argv)
+          set req_shell "$argv[$i]"
+        end
+      else if string match -q -- '--shell=*' "$argv[$i]"
+        set req_shell (string replace -- '--shell=' '' "$argv[$i]")
+      end
+      set i (math $i + 1)
+    end
+    if test -n "$req_shell"; and test "$req_shell" != fish
+      # Foreign shell output: print it, don't evaluate it in fish.
+      command lum $argv
     else
-      eval (command lum $argv[1..2] --shell fish $argv[3..-1])
+      set -l lum_cmd $argv
+      if test -z "$req_shell"
+        set lum_cmd $argv[1..2] --shell fish $argv[3..-1]
+      end
+      # Capture exact bytes so multiline values survive, apply via file,
+      # and propagate lum's exit status instead of masking failures.
+      set -l lum_out (mktemp)
+      or return $status
+      command lum $lum_cmd >"$lum_out"
+      set -l lum_status $status
+      if test $lum_status -eq 0
+        source "$lum_out"
+        set lum_status $status
+      end
+      rm -f "$lum_out"
+      return $lum_status
     end
   else
     command lum $argv
