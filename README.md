@@ -111,6 +111,12 @@ For zsh, add this to `~/.zshrc`:
 eval "$(lum env init --shell posix)"
 ```
 
+For fish, add this to `~/.config/fish/config.fish`:
+
+```fish
+lum env init --shell fish | source
+```
+
 Then restart your terminal.
 
 ### Windows PowerShell

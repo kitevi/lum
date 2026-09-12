@@ -81,6 +81,40 @@ Invoke-Expression (& lum.exe __completions powershell | Out-String)
     );
 }
 
+pub(crate) fn emit_fish_init(state: &BTreeMap<String, String>, bin: &std::path::Path) {
+    for (alias, value) in state {
+        if let Some(variable) = variable_for_alias(alias) {
+            println!("set -gx {variable} {}", fish_quote(value));
+        }
+    }
+    for (name, value) in FORCED_ENV {
+        println!("set -gx {name} {}", fish_quote(value));
+    }
+
+    let quoted_bin = fish_quote(&bin.to_string_lossy());
+    println!(
+        r#"if not contains -- {quoted_bin} $PATH
+  set -gx PATH {quoted_bin} $PATH
+end
+function lum --description 'lum wrapper (auto eval env set/unset)'
+  if test (count $argv) -ge 2; and test "$argv[1]" = env; and contains -- "$argv[2]" set unset
+    if contains -- --shell $argv
+      eval (command lum $argv)
+    else
+      eval (command lum $argv[1..2] --shell fish $argv[3..-1])
+    end
+  else
+    command lum $argv
+  end
+end
+
+# --- lum shell completion ---
+command lum __completions fish | source
+# --- end lum shell completion ---"#,
+        quoted_bin = quoted_bin
+    );
+}
+
 impl Default for EnvShell {
     fn default() -> Self {
         if cfg!(windows) {
@@ -97,4 +131,8 @@ pub(crate) fn shell_quote(value: &str) -> String {
 
 pub(crate) fn powershell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+pub(crate) fn fish_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }

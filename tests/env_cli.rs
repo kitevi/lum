@@ -216,6 +216,50 @@ fn env_set_and_unset_can_emit_powershell_statements() {
 }
 
 #[test]
+fn env_init_can_emit_fish_integration() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "--shell", "fish", "openrouter", "sk-test"])
+        .assert()
+        .success()
+        .stdout("set -gx OPENROUTER_API_KEY 'sk-test'\n");
+
+    lum_with_env(&home)
+        .args(["env", "init", "--shell", "fish"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "set -gx OPENROUTER_API_KEY 'sk-test'",
+        ))
+        .stdout(predicates::str::contains(
+            "set -gx npm_config_ignore_scripts 'true'",
+        ))
+        .stdout(predicates::str::contains("if not contains --"))
+        .stdout(predicates::str::contains("function lum"))
+        .stdout(predicates::str::contains(
+            "command lum __completions fish | source",
+        ));
+}
+
+#[test]
+fn env_set_and_unset_can_emit_fish_statements() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "--shell", "fish", "openrouter", "abc'def"])
+        .assert()
+        .success()
+        .stdout("set -gx OPENROUTER_API_KEY 'abc\\'def'\n");
+
+    lum_with_env(&home)
+        .args(["env", "unset", "--shell", "fish", "openrouter"])
+        .assert()
+        .success()
+        .stdout("set -e OPENROUTER_API_KEY\n");
+}
+
+#[test]
 fn env_set_hypercharm_emits_export_and_init_replays() {
     let home = TempDir::new().unwrap();
 

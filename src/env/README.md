@@ -17,7 +17,7 @@ lum env path
 
 Scope: the new value applies to the current shell immediately and to new shells (which replay state via `init`). Already-running processes (editors, agents like `pi`, daemons, other terminals) keep the environment they were started with — Unix copies env at spawn. Restart just that program from an updated shell to pick up the change; no reboot needed.
 
-The same init output also wires shell completions for bash and zsh by evaluating `lum __completions <shell>` for the active shell. Generated scripts call back into `lum` at completion time for candidates.
+The same init output also wires shell completions: bash/zsh via `lum __completions <shell>` for the active shell, fish via `command lum __completions fish | source`. Generated scripts call back into `lum` at completion time for candidates.
 
 On Windows, PowerShell is the supported shell. Add this to `$PROFILE`:
 
@@ -25,7 +25,9 @@ On Windows, PowerShell is the supported shell. Add this to `$PROFILE`:
 Invoke-Expression (& lum env init)
 ```
 
-For testing or explicit selection, `lum env init`, `lum env set`, and `lum env unset` accept `--shell posix` or `--shell powershell`. The default is PowerShell on Windows and POSIX elsewhere.
+For fish, add `lum env init --shell fish | source` to `~/.config/fish/config.fish`.
+
+For testing or explicit selection, `lum env init`, `lum env set`, and `lum env unset` accept `--shell posix`, `--shell fish`, or `--shell powershell`. The default is PowerShell on Windows and POSIX elsewhere.
 
 `lum __completions <shell>` is a hidden internal command backed by `usage-rs`; it supports `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
 
@@ -73,6 +75,12 @@ PowerShell exports use PowerShell single-quote escaping:
 
 ```powershell
 $env:OPENROUTER_API_KEY = 'abc''def'
+```
+
+Fish exports use fish single-quote escaping:
+
+```fish
+set -gx OPENROUTER_API_KEY 'abc\'def'
 ```
 
 ## Forced Defaults

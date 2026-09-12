@@ -130,6 +130,7 @@ pub enum BackupCommand {
 #[derive(Debug, Clone, Copy, usage::ValueEnum)]
 pub enum EnvShell {
     Posix,
+    Fish,
     Powershell,
 }
 

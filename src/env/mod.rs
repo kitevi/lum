@@ -37,6 +37,7 @@ fn init(shell: EnvShell) -> Result<()> {
     let stored = state::read_state()?;
     match shell {
         EnvShell::Posix => shell::emit_posix_init(&stored, &bin),
+        EnvShell::Fish => shell::emit_fish_init(&stored, &bin),
         EnvShell::Powershell => shell::emit_powershell_init(&stored, &bin),
     }
     Ok(())
@@ -50,6 +51,7 @@ fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
     state::write_state(&stored)?;
     match shell {
         EnvShell::Posix => println!("export {variable}={}", shell::shell_quote(value)),
+        EnvShell::Fish => println!("set -gx {variable} {}", shell::fish_quote(value)),
         EnvShell::Powershell => println!("$env:{variable} = {}", shell::powershell_quote(value)),
     }
     eprintln!("[lum env] Set {alias} ({variable})");
@@ -64,6 +66,7 @@ fn unset(alias: &str, shell: EnvShell) -> Result<()> {
     state::write_state(&stored)?;
     match shell {
         EnvShell::Posix => println!("unset {variable}"),
+        EnvShell::Fish => println!("set -e {variable}"),
         EnvShell::Powershell => {
             println!("Remove-Item Env:{variable} -ErrorAction SilentlyContinue")
         }
