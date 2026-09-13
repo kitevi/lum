@@ -171,3 +171,23 @@ pub(crate) fn powershell_quote(value: &str) -> String {
 pub(crate) fn fish_quote(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fish_quote_covers_literal_edge_cases() {
+        assert_eq!(fish_quote("abc"), "'abc'");
+        // Single quotes are backslash-escaped inside fish single quotes.
+        assert_eq!(fish_quote("a'b"), "'a\\'b'");
+        // Backslashes are doubled so they survive literally.
+        assert_eq!(fish_quote("a\\b"), "'a\\\\b'");
+        // Backslash before a quote: doubling happens first, then the quote is escaped.
+        assert_eq!(fish_quote("\\'"), "'\\\\\\''");
+        // Newlines pass through; fish single quotes span lines literally.
+        assert_eq!(fish_quote("a\nb"), "'a\nb'");
+        // `$`, `"`, and backticks need no escaping inside fish single quotes.
+        assert_eq!(fish_quote("$HOME \"x\" `y`"), "'$HOME \"x\" `y`'");
+    }
+}
