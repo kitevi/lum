@@ -59,6 +59,7 @@ Current aliases:
 | openrouter | OPENROUTER_API_KEY |
 | synthetic | SYNTHETIC_API_KEY |
 | terr | TERR_DB_URL |
+| tinyfish | TINYFISH_API_KEY |
 | zro | ZRO_API_KEY |
 
 ## Shell Output

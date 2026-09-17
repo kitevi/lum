@@ -155,6 +155,7 @@ Available aliases:
 | `opencode` | `OPENCODE_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `synthetic` | `SYNTHETIC_API_KEY` |
+| `tinyfish` | `TINYFISH_API_KEY` |
 | `zro` | `ZRO_API_KEY` |
 
 Examples:
