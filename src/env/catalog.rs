@@ -3,12 +3,10 @@ pub(crate) const ALIASES: &[(&str, &str)] = &[
     ("deepseek", "DEEPSEEK_API_KEY"),
     ("exa", "EXA_API_KEY"),
     ("hypercharm", "HYPERCHARM_API_KEY"),
-    ("neuralwatt", "NEURALWATT_API_KEY"),
     ("opencode", "OPENCODE_API_KEY"),
     ("openrouter", "OPENROUTER_API_KEY"),
     ("terr", "TERR_DB_URL"),
     ("tinyfish", "TINYFISH_API_KEY"),
-    ("zro", "ZRO_API_KEY"),
 ];
 
 pub(crate) const FORCED_ENV: &[(&str, &str)] = &[("npm_config_ignore_scripts", "true")];

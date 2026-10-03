@@ -151,11 +151,9 @@ Available aliases:
 | `deepseek` | `DEEPSEEK_API_KEY` |
 | `exa` | `EXA_API_KEY` |
 | `hypercharm` | `HYPERCHARM_API_KEY` |
-| `neuralwatt` | `NEURALWATT_API_KEY` |
 | `opencode` | `OPENCODE_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `tinyfish` | `TINYFISH_API_KEY` |
-| `zro` | `ZRO_API_KEY` |
 
 Examples:
 

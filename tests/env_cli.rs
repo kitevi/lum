@@ -91,29 +91,6 @@ fn env_set_deepseek_emits_export_and_aliases_lists_it() {
 }
 
 #[test]
-fn env_set_zro_emits_export_and_aliases_lists_it() {
-    let home = TempDir::new().unwrap();
-
-    lum_with_env(&home)
-        .args(["env", "set", "zro", "zro-key"])
-        .assert()
-        .success()
-        .stdout("export ZRO_API_KEY='zro-key'\n");
-
-    lum_with_env(&home)
-        .args(["env", "aliases"])
-        .assert()
-        .success()
-        .stdout(predicates::str::contains("zro        → ZRO_API_KEY"));
-
-    lum_with_env(&home)
-        .args(["env", "unset", "zro"])
-        .assert()
-        .success()
-        .stdout("unset ZRO_API_KEY\n");
-}
-
-#[test]
 fn env_quotes_shell_values_safely() {
     let home = TempDir::new().unwrap();
 
@@ -151,7 +128,7 @@ fn env_list_orders_set_aliases_before_unset() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["env", "set", "zro", "zro-key"])
+        .args(["env", "set", "hypercharm", "hc-test"])
         .assert()
         .success();
 
@@ -166,11 +143,11 @@ fn env_list_orders_set_aliases_before_unset() {
     )
     .unwrap();
 
-    let zro = stdout.find("zro ").expect("zro row printed");
+    let hypercharm = stdout.find("hypercharm ").expect("hypercharm row printed");
     let deepseek = stdout.find("deepseek").expect("unset deepseek row printed");
     assert!(
-        zro < deepseek,
-        "set alias 'zro' should print before unset 'deepseek':\n{stdout}"
+        hypercharm < deepseek,
+        "set alias 'hypercharm' should print before unset 'deepseek':\n{stdout}"
     );
 }
 
