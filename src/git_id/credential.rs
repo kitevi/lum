@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use gix_error::ResultExt;
 use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
@@ -20,7 +21,7 @@ pub fn run(route_id: &str, operation: &str) -> Result<()> {
         std::io::stdin().lock(),
         std::io::stdout().lock(),
         gix_credentials::protocol::ContextOptions::default(),
-        |action, request| resolve(action, route_id, request),
+        |action, request| resolve(action, route_id, request).or_erased(),
     );
 
     result.map_err(|_| {

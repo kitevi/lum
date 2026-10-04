@@ -20,12 +20,12 @@ reqwest = { version = "0.13.5", default-features = false, features = ["blocking"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 flate2 = "1.1.10"
 tar = "0.4.46"
 xz2 = "0.1.7"
 zip = "8.6.0"
-fs_extra = "1"
+fs_extra = "1.3.0"
 tempfile = "3.27.0"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
@@ -35,17 +35,18 @@ which = "8.0.6"
 ignore = "0.4.33"
 chrono = { version = "0.4.45", features = ["clock", "std"] }
 globset = "0.4.20"
-notify-rust = "4.18.0"
+notify-rust = "4.18.1"
 sysinfo = "0.39.6"
-rand = "0.10.2"
+rand = "0.10.3"
 secrecy = { version = "0.10.3", features = ["serde"] }
-url = "2"
-usage = { package = "usage-rs", version = "6.8.0", features = ["completions"] }
-gix-credentials = { version = "0.40", default-features = false }
+url = "2.5.8"
+usage = { package = "usage-rs", version = "6.12.0", features = ["completions"] }
+gix-credentials = { version = "0.41.0", default-features = false }
+gix-error = "0.4.0"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
-usage-parser = { package = "usage-lib", version = "6.8.0" }
+usage-parser = { package = "usage-lib", version = "6.12.0" }
 predicates = "3.1.4"
 tempfile = "3.27.0"
 
