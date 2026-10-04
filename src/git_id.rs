@@ -224,10 +224,21 @@ fn write_global_git_config(identities: &[Identity]) -> Result<()> {
 
     let mut section = String::from("# lum:git-id:begin\n");
     for (identity, folder) in entries {
-        let mut folder_path = git_path(&expand_path(folder));
+        let expanded = expand_path(folder);
+        let resolved = dunce::canonicalize(&expanded).unwrap_or(expanded);
+        let folder_path = if cfg!(windows) {
+            git_path(&resolved)
+        } else {
+            resolved.to_string_lossy().into_owned()
+        };
+        let mut folder_path = globset::escape(&folder_path.replace('\\', r"\\"));
+        if folder_path.contains('\n') {
+            anyhow::bail!("managed folder path contains a newline: {resolved:?}");
+        }
         if !folder_path.ends_with('/') {
             folder_path.push('/');
         }
+        let folder_path = folder_path.replace('\\', "\\\\").replace('"', "\\\"");
         section.push_str(&format!(
             "[includeIf \"gitdir:{}\"]\n  path = {}\n\n",
             folder_path,

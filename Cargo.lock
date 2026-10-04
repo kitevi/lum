@@ -1542,6 +1542,7 @@ dependencies = [
  "assert_cmd",
  "chrono",
  "directories",
+ "dunce",
  "flate2",
  "fs_extra",
  "gix-credentials",

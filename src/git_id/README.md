@@ -128,6 +128,10 @@ Generated files are namespaced with `lum-git-id-`:
 
 Folder-specific routing is done with Git `includeIf` sections and per-identity Git configuration.
 
+After creating managed folders, sync resolves their symlinks before writing `includeIf "gitdir:<folder>/"` patterns. This keeps routing consistent when Git reports the physical repository path, such as `/private/var/...` instead of `/var/...` on macOS. Windows path separators are rendered as forward slashes, preserving drive and UNC network roots. Backslashes in Unix folder names remain literal characters.
+
+Folder paths are literal, not globs: sync escapes wildcard characters and quotes before writing Git conditions. Sync rejects newlines in resolved folder paths instead of writing an invalid global Git config.
+
 SSH-authenticated identity configs include:
 
 ```gitconfig

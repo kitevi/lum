@@ -22,6 +22,18 @@ fn circle_touch_config(
     password: &str,
     allow_insecure_http: Option<bool>,
 ) -> String {
+    circle_touch_config_in(
+        &home.path().join("Work/CircleTouch"),
+        password,
+        allow_insecure_http,
+    )
+}
+
+fn circle_touch_config_in(
+    folder: &std::path::Path,
+    password: &str,
+    allow_insecure_http: Option<bool>,
+) -> String {
     let mut authentication = serde_json::json!({
         "type": "http-basic",
         "scheme": "http",
@@ -37,7 +49,7 @@ fn circle_touch_config(
             "author_name": "Jane Doe",
             "email": "jane@company.com",
             "domain": "gitlab.dev.circletouch.eu",
-            "folders": [home.path().join("Work/CircleTouch")],
+            "folders": [folder],
             "authentication": authentication
         }]
     })
@@ -239,6 +251,110 @@ fn sync_configures_http_basic_credentials_without_copying_the_password() {
 
     let ssh_config = std::fs::read_to_string(home.path().join(".ssh/config")).unwrap();
     assert!(!ssh_config.contains("gitlab.dev.circletouch.eu"));
+}
+
+#[cfg(unix)]
+#[test]
+fn git_identity_routing_survives_a_symlinked_folder_path() {
+    let home = TempDir::new().unwrap();
+    let managed = home.path().join("Work/CircleTouch/project");
+    std::fs::create_dir_all(home.path().join("Work/CircleTouch")).unwrap();
+    let symlink = home.path().join("linked");
+    std::os::unix::fs::symlink(home.path().join("Work"), &symlink).unwrap();
+
+    write_git_id_config(
+        &home,
+        &circle_touch_config_in(&symlink.join("CircleTouch"), "TOP-SECRET", Some(true)),
+    );
+    sync_git_ids(&home);
+    git_with_home(&home)
+        .args(["init", managed.to_str().unwrap()])
+        .assert()
+        .success();
+
+    git_with_home(&home)
+        .args(["credential", "fill"])
+        .current_dir(&managed)
+        .write_stdin("protocol=http\nhost=gitlab.dev.circletouch.eu\n\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("username=jane\n"))
+        .stdout(predicates::str::contains("password=TOP-SECRET\n"));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_git_identity_routes_use_literal_folder_paths() {
+    for (folder, sibling) in [
+        ("Work[1]", "Work1"),
+        ("Work*", "Work-other"),
+        ("Work?", "Work1"),
+        ("Work\"quoted", "Workquoted"),
+        (r"Work\1", "Work/1"),
+    ] {
+        let home = TempDir::new().unwrap();
+        let real = home.path().join(folder);
+        std::fs::create_dir_all(&real).unwrap();
+        let linked = home.path().join("linked");
+        std::os::unix::fs::symlink(&real, &linked).unwrap();
+        write_git_id_config(
+            &home,
+            &circle_touch_config_in(&linked, "TOP-SECRET", Some(true)),
+        );
+        sync_git_ids(&home);
+
+        let managed = real.join("project");
+        let unmanaged = home.path().join(sibling).join("project");
+        for repo in [&managed, &unmanaged] {
+            git_with_home(&home)
+                .arg("init")
+                .arg(repo)
+                .assert()
+                .success();
+        }
+        git_with_home(&home)
+            .args(["config", "--get", "user.name"])
+            .current_dir(&unmanaged)
+            .assert()
+            .code(1)
+            .stdout("");
+        git_with_home(&home)
+            .args(["config", "--get", "user.name"])
+            .current_dir(&managed)
+            .assert()
+            .success()
+            .stdout("Jane Doe\n");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_rejects_newlines_in_symlink_targets_without_damaging_git_config() {
+    let home = TempDir::new().unwrap();
+    let real = home.path().join("Work\n1");
+    std::fs::create_dir_all(&real).unwrap();
+    let linked = home.path().join("linked");
+    std::os::unix::fs::symlink(&real, &linked).unwrap();
+    write_git_id_config(
+        &home,
+        &circle_touch_config_in(&linked, "TOP-SECRET", Some(true)),
+    );
+    git_with_home(&home)
+        .args(["config", "--global", "user.name", "Original Identity"])
+        .assert()
+        .success();
+
+    sync_command(&home)
+        .args(["git-id", "sync"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("newline"));
+
+    git_with_home(&home)
+        .args(["config", "--global", "--get", "user.name"])
+        .assert()
+        .success()
+        .stdout("Original Identity\n");
 }
 
 #[test]

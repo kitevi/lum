@@ -302,5 +302,34 @@ pub fn allowed_signers_path() -> Result<PathBuf> {
 }
 
 pub fn git_path(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let path = path.to_string_lossy().replace('\\', "/");
+    if let Some(network_path) = path.strip_prefix("//?/UNC/") {
+        format!("//{network_path}")
+    } else if let Some(drive_path) = path.strip_prefix("//?/")
+        && drive_path.as_bytes().get(1) == Some(&b':')
+    {
+        drive_path.to_owned()
+    } else {
+        path
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::git_path;
+
+    #[test]
+    fn git_paths_preserve_windows_drive_and_network_roots() {
+        for (path, expected) in [
+            (r"\\?\UNC\server\share\Work", "//server/share/Work"),
+            (r"\\?\C:\Work\Repo", "C:/Work/Repo"),
+            (r"\\server\share\Work", "//server/share/Work"),
+            (r"C:\Work\Repo", "C:/Work/Repo"),
+            ("/home/jane/Work", "/home/jane/Work"),
+        ] {
+            assert_eq!(git_path(Path::new(path)), expected, "{path}");
+        }
+    }
 }
