@@ -13,6 +13,9 @@ pub struct Station {
     pub kind: StationKind,
 }
 
+/// Reserved selector code that plays a random built-in station. Never a catalog entry.
+pub const RANDOM_CODE: &str = "rand";
+
 const STATIONS: &[Station] = &[
     Station {
         code: "atma",
@@ -90,6 +93,26 @@ pub fn find(code: &str) -> Option<&'static Station> {
     STATIONS.iter().find(|station| station.code == code)
 }
 
+/// Draws one station from `pool`. `choose` receives the pool length and must
+/// return an index below it, so tests can pin the draw without touching the RNG.
+pub fn choose_station(
+    pool: &[&'static Station],
+    mut choose: impl FnMut(usize) -> usize,
+) -> Option<&'static Station> {
+    match pool.split_first() {
+        Some(_) => Some(pool[choose(pool.len())]),
+        None => None,
+    }
+}
+
+/// Catalog stations eligible for a random draw, minus the station to skip.
+pub fn eligible_stations(exclude_code: Option<&str>) -> Vec<&'static Station> {
+    STATIONS
+        .iter()
+        .filter(|station| Some(station.code) != exclude_code)
+        .collect()
+}
+
 pub fn playlist_urls(code: &str) -> Option<&'static [&'static str]> {
     match code {
         "aphx" => Some(&[
@@ -98,6 +121,31 @@ pub fn playlist_urls(code: &str) -> Option<&'static [&'static str]> {
         ]),
         _ => None,
     }
+}
+
+/// A `lum radio` command that dispatches to code rather than to a stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PseudoCommand {
+    pub code: &'static str,
+    pub description: &'static str,
+}
+
+const PSEUDO_COMMANDS: &[PseudoCommand] = &[PseudoCommand {
+    code: RANDOM_CODE,
+    description: "Play a random built-in station",
+}];
+
+pub fn format_pseudo_commands() -> String {
+    PSEUDO_COMMANDS
+        .iter()
+        .map(|command| format!("{:<4}  {}", command.code, command.description))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Catalog plus non-station commands, used by `lum radio list` and unknown-code errors.
+pub fn format_reference() -> String {
+    format!("{}\n\n{}", format_listing(), format_pseudo_commands())
 }
 
 pub fn format_listing() -> String {
@@ -132,6 +180,65 @@ mod tests {
     }
 
     #[test]
+    fn eligible_stations_drop_only_the_remembered_station() {
+        let eligible = eligible_stations(Some("atma"));
+
+        assert_eq!(eligible.len(), all().len() - 1);
+        assert_eq!(eligible.first().map(|station| station.code), Some("atm2"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("aphx"));
+        assert!(eligible.iter().all(|station| station.code != "atma"));
+    }
+
+    #[test]
+    fn eligible_stations_without_exclusion_are_the_whole_catalog() {
+        let eligible = eligible_stations(None);
+
+        assert_eq!(eligible.len(), all().len());
+        assert_eq!(eligible.first().map(|station| station.code), Some("atma"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("aphx"));
+    }
+
+    #[test]
+    fn choose_station_draws_from_the_pool_with_the_injected_index() {
+        let eligible = eligible_stations(Some("atma"));
+        let mut observed_len = 0;
+
+        let first = choose_station(&eligible, |len| {
+            observed_len = len;
+            0
+        });
+        let last = eligible.len() - 1;
+        let last = choose_station(&eligible, |_| last);
+
+        assert_eq!(observed_len, eligible.len());
+        assert_eq!(first.map(|station| station.code), Some("atm2"));
+        assert_eq!(last.map(|station| station.code), Some("aphx"));
+    }
+
+    #[test]
+    fn choose_station_has_no_candidate_for_an_empty_pool() {
+        assert!(choose_station(&[], |_| 0).is_none());
+    }
+
+    #[test]
+    fn station_reference_lists_stations_then_the_random_selector() {
+        let reference = format_reference();
+
+        assert_eq!(
+            reference,
+            format!(
+                "{}\n\nrand  Play a random built-in station",
+                format_listing()
+            )
+        );
+        assert!(
+            !format_listing()
+                .lines()
+                .any(|line| line.starts_with("rand "))
+        );
+    }
+
+    #[test]
     fn finds_youtube_station_by_code() {
         let station = find("ytlf").expect("ytlf station should exist");
         assert_eq!(station.kind, StationKind::YouTube);
@@ -149,6 +256,12 @@ mod tests {
                 "https://www.youtube.com/watch?v=Xw5AiRVqfqk",
             ]
         );
+    }
+
+    #[test]
+    fn random_selector_is_reserved_and_never_a_catalog_entry() {
+        assert!(find(RANDOM_CODE).is_none());
+        assert!(!all().iter().any(|station| station.code == RANDOM_CODE));
     }
 
     #[test]

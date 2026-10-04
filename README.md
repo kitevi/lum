@@ -1,12 +1,13 @@
 # lum
 
-`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and macOS apps, listening to a few internet radio stations, checking local Git repositories, and managing folder-based Git identities.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and macOS apps, listening to internet radio stations or letting lum pick a random one, checking local Git repositories, and managing folder-based Git identities.
 
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
 - `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
 - `lum apps` — install and update macOS apps like OpenEmu that Homebrew disabled (macOS only).
+- `lum radio rand` — play a random built-in station, skipping the remembered station.
 
 ## Install
 
@@ -234,6 +235,12 @@ Play a station by code:
 
 ```sh
 lum radio <station>
+```
+
+Play a random station, never the one already playing:
+
+```sh
+lum radio rand
 ```
 
 ### Repositories

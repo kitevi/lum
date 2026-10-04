@@ -76,6 +76,29 @@ fn help_prints_public_commands_and_hides_internal_ones() {
 }
 
 #[test]
+fn radio_help_advertises_the_random_selector() {
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["radio", "--help"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("lum radio rand"));
+}
+
+#[test]
+fn radio_list_shows_stations_then_the_random_selector() {
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["radio", "list"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("atma  atma.fm Channel 1"))
+        .stdout(predicates::str::contains(
+            "rand  Play a random built-in station",
+        ));
+}
+
+#[test]
 fn invalid_flag_exits_2_with_stderr_diagnostic() {
     Command::cargo_bin("lum")
         .unwrap()

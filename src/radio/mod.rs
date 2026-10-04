@@ -4,7 +4,8 @@ pub mod stations;
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
+use rand::RngExt;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -14,14 +15,22 @@ use crate::yt::resolve_yt_dlp;
 use player::ExternalPlayer;
 use stations::{Station, StationKind};
 
-const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio atma)\n  lum radio status  show playback state\n  lum radio stop    stop playback";
+const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio atma)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
+
+/// How a play intent was formed. `Explicit` names a station code; `Random`
+/// defers the choice to runtime selection over the station catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Selection {
+    Explicit(String),
+    Random,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RadioCommand {
     List,
     Status,
     Stop,
-    Play { code: String },
+    Play { selection: Selection },
 }
 
 pub fn parse_command(args: &RadioArgs) -> RadioCommand {
@@ -29,10 +38,32 @@ pub fn parse_command(args: &RadioArgs) -> RadioCommand {
         None | Some("list") => RadioCommand::List,
         Some("status") => RadioCommand::Status,
         Some("stop") => RadioCommand::Stop,
+        Some(stations::RANDOM_CODE) => RadioCommand::Play {
+            selection: Selection::Random,
+        },
         Some(code) => RadioCommand::Play {
-            code: code.to_string(),
+            selection: Selection::Explicit(code.to_string()),
         },
     }
+}
+
+/// Resolves a play intent to a concrete station, before any playback is stopped.
+fn resolve_station(selection: Selection) -> Result<&'static Station> {
+    match selection {
+        Selection::Explicit(code) => stations::find(&code).with_context(|| {
+            format!(
+                "station not found: {code}\n\n{}\n\n{}",
+                stations::format_reference(),
+                COMMAND_HELP
+            )
+        }),
+        Selection::Random => random_station(current_station_code()?),
+    }
+}
+
+/// The station remembered in playback state, so a random draw can skip it.
+fn current_station_code() -> Result<Option<String>> {
+    Ok(read_state()?.map(|state| state.code))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +86,7 @@ enum RadioProcessKind {
 pub async fn run(args: RadioArgs) -> Result<()> {
     match parse_command(&args) {
         RadioCommand::List => {
-            println!("{}\n\n{}", stations::format_listing(), COMMAND_HELP);
+            println!("{}\n\n{}", stations::format_reference(), COMMAND_HELP);
             Ok(())
         }
         RadioCommand::Status => {
@@ -63,17 +94,35 @@ pub async fn run(args: RadioArgs) -> Result<()> {
             Ok(())
         }
         RadioCommand::Stop => stop(),
-        RadioCommand::Play { code } => {
-            let station = stations::find(&code).with_context(|| {
-                format!(
-                    "station not found: {code}\n\n{}\n\n{}",
-                    stations::format_listing(),
-                    COMMAND_HELP
-                )
-            })?;
-            play(*station).await
-        }
+        RadioCommand::Play { selection } => play(*resolve_station(selection)?).await,
     }
+}
+
+/// Picks a random station from the catalog, skipping `exclude_code`.
+fn random_station(exclude_code: Option<String>) -> Result<&'static Station> {
+    let exclude_code = exclude_code.as_deref();
+    let pool = stations::eligible_stations(exclude_code);
+    let chosen = random_station_in(&pool, choose_index)?;
+    tracing::debug!(
+        chosen = chosen.code,
+        excluded = exclude_code.unwrap_or(""),
+        candidates = pool.len(),
+        "random radio station"
+    );
+    Ok(chosen)
+}
+
+fn choose_index(len: usize) -> usize {
+    rand::rng().random_range(0..len)
+}
+
+/// Picks one station from `pool`. `choose` receives the pool length and must
+/// return an index below it, so tests can pin the draw without touching the RNG.
+fn random_station_in(
+    pool: &[&'static Station],
+    choose: impl FnMut(usize) -> usize,
+) -> Result<&'static Station> {
+    stations::choose_station(pool, choose).ok_or_else(|| anyhow!("no random station available"))
 }
 
 async fn play(station: Station) -> Result<()> {
@@ -268,7 +317,19 @@ mod tests {
                 arg: Some("atma".into())
             }),
             RadioCommand::Play {
-                code: "atma".into()
+                selection: Selection::Explicit("atma".into())
+            }
+        );
+    }
+
+    #[test]
+    fn routes_rand_as_random_selection() {
+        assert_eq!(
+            parse_command(&RadioArgs {
+                arg: Some("rand".into())
+            }),
+            RadioCommand::Play {
+                selection: Selection::Random
             }
         );
     }
@@ -280,7 +341,7 @@ mod tests {
                 arg: Some("pause".into())
             }),
             RadioCommand::Play {
-                code: "pause".into()
+                selection: Selection::Explicit("pause".into())
             }
         );
     }
@@ -292,7 +353,7 @@ mod tests {
                 arg: Some("resume".into())
             }),
             RadioCommand::Play {
-                code: "resume".into()
+                selection: Selection::Explicit("resume".into())
             }
         );
     }
@@ -305,6 +366,45 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.process_kind, RadioProcessKind::Ffplay);
+    }
+
+    #[test]
+    fn unknown_station_error_lists_stations_and_the_random_selector() {
+        let error = resolve_station(Selection::Explicit("nope".into()))
+            .expect_err("an unknown code must fail");
+        let message = error.to_string();
+
+        assert!(message.starts_with("station not found: nope"));
+        assert!(message.contains("atma  atma.fm Channel 1"));
+        assert!(message.contains("rand  Play a random built-in station"));
+    }
+
+    #[test]
+    fn random_selection_fails_when_no_station_is_eligible() {
+        let pool: &[&'static Station] = &[];
+
+        let error = random_station_in(pool, |_| 0).expect_err("an empty pool must fail");
+
+        assert_eq!(error.to_string(), "no random station available");
+    }
+
+    #[test]
+    fn random_station_draws_from_the_catalog_and_skips_the_remembered_one() {
+        for _ in 0..200 {
+            let station = random_station(Some("atma".into())).expect("catalog has stations");
+
+            assert_ne!(station.code, "atma");
+            assert!(stations::all().iter().any(|s| s.code == station.code));
+        }
+    }
+
+    #[test]
+    fn random_station_draws_from_the_catalog_without_an_exclusion() {
+        for _ in 0..200 {
+            let station = random_station(None).expect("catalog has stations");
+
+            assert!(stations::all().iter().any(|s| s.code == station.code));
+        }
     }
 
     #[test]

@@ -110,10 +110,10 @@ impl From<CompletionShell> for usage::complete::Shell {
 
 #[derive(Debug, usage::Args, Clone)]
 #[usage(
-    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio atma)\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
+    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio atma)\n  lum radio rand            Play a random station, never the current one\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
 )]
 pub struct RadioArgs {
-    /// Command (status|stop|list) or station code.
+    /// Command (list|status|stop|rand) or station code.
     ///
     /// Omit to list stations and common playback commands.
     pub arg: Option<String>,
