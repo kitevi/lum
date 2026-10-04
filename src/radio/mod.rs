@@ -194,13 +194,34 @@ async fn resolve_youtube_stream_url(url: &str) -> Result<String> {
         .output()
         .context("failed to run yt-dlp")?;
     if !output.status.success() {
-        bail!("yt-dlp failed to resolve YouTube station");
+        bail!(
+            "yt-dlp failed to resolve YouTube station: {}",
+            yt_dlp_reason(&output.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .next()
         .context("yt-dlp produced no stream URL")?
         .to_string())
+}
+
+/// yt-dlp buries the real cause under progress lines on stderr, so prefer its ERROR line.
+/// Without this, a dead or unresolvable station URL reports only that resolution failed.
+fn yt_dlp_reason(stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let reason = lines
+        .iter()
+        .find(|line| line.starts_with("ERROR"))
+        .or_else(|| lines.first())
+        .copied()
+        .unwrap_or("yt-dlp reported no reason");
+    reason.strip_prefix("ERROR: ").unwrap_or(reason).to_string()
 }
 
 fn youtube_stream_url_args(url: &str) -> [&str; 5] {
@@ -426,6 +447,31 @@ mod tests {
         expected.sort_unstable();
 
         assert_eq!(randomized, expected);
+    }
+
+    #[test]
+    fn yt_dlp_failure_reports_the_reason_yt_dlp_printed() {
+        let stderr = b"[youtube] Extracting URL: https://example.test/watch\n\
+                      [youtube] X4VbdwhkE10: Downloading webpage\n\
+                      ERROR: [youtube] X4VbdwhkE10: This live stream recording is not available.\n";
+
+        assert_eq!(
+            yt_dlp_reason(stderr),
+            "[youtube] X4VbdwhkE10: This live stream recording is not available."
+        );
+    }
+
+    #[test]
+    fn yt_dlp_failure_without_an_error_line_keeps_the_last_output() {
+        assert_eq!(
+            yt_dlp_reason(b"[youtube] X4VbdwhkE10: Downloading webpage\nWARNING: no formats\n"),
+            "[youtube] X4VbdwhkE10: Downloading webpage"
+        );
+    }
+
+    #[test]
+    fn yt_dlp_failure_without_any_output_still_explains_itself() {
+        assert_eq!(yt_dlp_reason(b"\n"), "yt-dlp reported no reason");
     }
 
     #[test]

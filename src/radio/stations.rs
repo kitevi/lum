@@ -73,8 +73,8 @@ const STATIONS: &[Station] = &[
     },
     Station {
         code: "ytlf",
-        description: "Lofi Girl - lofi hip hop radio - beats to relax/study to",
-        url: "https://www.youtube.com/watch?v=X4VbdwhkE10",
+        description: "Lofi Girl - current featured live stream",
+        url: "https://www.youtube.com/@LofiGirl/live",
         kind: StationKind::YouTube,
     },
     Station {
@@ -241,6 +241,13 @@ mod tests {
     #[test]
     fn finds_youtube_station_by_code() {
         let station = find("ytlf").expect("ytlf station should exist");
+        assert_eq!(station.kind, StationKind::YouTube);
+    }
+
+    #[test]
+    fn ytlf_follows_the_channel_featured_live_stream() {
+        let station = find("ytlf").expect("ytlf station should exist");
+        assert_eq!(station.url, "https://www.youtube.com/@LofiGirl/live");
         assert_eq!(station.kind, StationKind::YouTube);
     }
 

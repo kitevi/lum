@@ -38,6 +38,8 @@ The old pure-Rust foreground audio path is no longer the product direction for `
 
 Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist.
 
+The `ytlf` station points at the channel `/live` URL (`https://www.youtube.com/@LofiGirl/live`), so yt-dlp resolves whatever Lofi Girl currently features live and the station survives their 24/7 stream rotations. Do not point it back at a `watch?v=` video URL: those video IDs rot each time the channel rotates its streams.
+
 Out of scope unless a real station requires it:
 
 - user-configurable stations
