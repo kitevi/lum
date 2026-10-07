@@ -48,6 +48,7 @@ async fn run(cli: Cli) -> Result<()> {
             Ok(())
         }
         Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code).await,
+        Commands::RadioDirectRunner { code } => radio::run_direct_runner(code).await,
         Commands::GitCredential { .. } => unreachable!("credential helper handled before logging"),
         Commands::Backup { command } => backup::run(command).await,
         Commands::Radio(args) => radio::run(args).await,

@@ -26,9 +26,16 @@
 
 Radio playback uses the existing ffmpeg dependency path:
 
-- `ffplay` does audio playback for direct streams.
-- `yt-dlp` resolves YouTube live station pages to stream URLs.
+- Direct and YouTube stations run under a hidden `__radio_direct_runner` supervisor process that loops `ffplay` until stopped.
+- `yt-dlp` resolves YouTube live station pages to stream URLs; the runner re-resolves on every playback attempt so expired stream URLs heal themselves.
 - `ffplay` then plays the resolved YouTube stream URL.
+- Playlist stations keep the separate `__radio_playlist_runner` loop, which must see track EOF to advance and therefore does not use the reconnect flags.
+
+`ffplay` recovery arguments (see ADR-0014):
+
+- `-autoexit` so the supervisor can observe the end of an attempt and decide to respawn.
+- `-rw_timeout 15000000` so a connection that delivers no data for 15 seconds errors out instead of blocking forever.
+- Live stations additionally get `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`, which heals dropped and stalled connections in-process without leaving silence.
 
 `ffplay` is preferred from `$PATH`. If it is not on `$PATH`, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary.
 
@@ -50,10 +57,14 @@ Out of scope unless a real station requires it:
 
 Controls are process-backed, not terminal-key backed:
 
-- `stop` kills the remembered `ffplay` process only if the current process still matches ffplay identity/start-time state, then clears state.
+- Direct and YouTube stations remember the supervisor runner process; `stop` kills the runner tree (runner plus its ffplay child) and clears state.
+- `status` reports `playing` while the remembered runner process is alive, meaning it is actively playing or retrying with backoff.
+- After 5 consecutive short-lived playback attempts (a session shorter than 60 seconds resets the streak), the runner gives up, sends a desktop notification, logs the failure, and exits; the next `status` then reports `stopped`. Failed yt-dlp resolutions count as failed attempts and back off like any other failure.
+- Runner diagnostics (attempt failures, respawn decisions) go to the rotating `lum.log` in lum's log directory, not the terminal, because the runner runs detached with nulled stdio.
 - Starting a new station stops the remembered process and starts the new station.
+- Playlist stations keep the pre-existing runner semantics.
 
-State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered ffplay PID and process start time when available.
+State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered runner PID and process start time when available. Legacy state files written before runners existed remember an ffplay PID directly and still work.
 
 User-facing output remains plain/script-friendly:
 
@@ -67,6 +78,14 @@ Run normal tests:
 ```sh
 cargo test --workspace
 ```
+
+Playback-recovery probes need `ffplay`, `ffmpeg`, and an audio output device, so they are opt-in:
+
+```sh
+LUM_RADIO_PLAYBACK_TESTS=1 cargo test radio::
+```
+
+They drive the real ffplay spawn path against a local fixture server that drops, stalls, or 404s connections, and assert the recovery behavior (transparent reconnect, runner respawn).
 
 Manual live-stream testing requires `ffplay` and, for YouTube stations, `yt-dlp`:
 

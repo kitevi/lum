@@ -3,6 +3,7 @@ pub mod stations;
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use rand::RngExt;
@@ -81,6 +82,7 @@ enum RadioProcessKind {
     #[default]
     Ffplay,
     PlaylistRunner,
+    DirectRunner,
 }
 
 pub async fn run(args: RadioArgs) -> Result<()> {
@@ -132,10 +134,12 @@ async fn play(station: Station) -> Result<()> {
             ExternalPlayer::start_playlist(station.code)?,
             RadioProcessKind::PlaylistRunner,
         ),
-        _ => {
-            let url = playable_url(station).await?;
-            (ExternalPlayer::start(&url).await?, RadioProcessKind::Ffplay)
-        }
+        // Direct and YouTube stations run under a supervisor runner that
+        // respawns playback when the stream fails; see ADR-0014.
+        _ => (
+            ExternalPlayer::start_station_runner(station.code)?,
+            RadioProcessKind::DirectRunner,
+        ),
     };
     write_state(&RadioState {
         pid: player.pid,
@@ -228,6 +232,114 @@ fn youtube_stream_url_args(url: &str) -> [&str; 5] {
     ["-g", "--no-playlist", "-f", "bestaudio", url]
 }
 
+/// How long one playback attempt must last to count as a healthy session and
+/// reset the failure streak.
+const HEALTHY_SESSION_MIN: Duration = Duration::from_secs(60);
+
+/// Consecutive short-lived attempts before a station runner gives up.
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+
+/// What a station runner does after one playback attempt finishes.
+#[derive(Debug, PartialEq, Eq)]
+enum Retry {
+    /// Respawn playback after the backoff delay.
+    After(Duration),
+    /// Too many consecutive short-lived failures: stop trying.
+    GiveUp,
+}
+
+/// Escalating respawn backoff for a station runner: 2s, 5s, 15s, then 30s.
+fn respawn_backoff(failure_index: u32) -> Duration {
+    const STEPS: [u64; 4] = [2, 5, 15, 30];
+    Duration::from_secs(STEPS[(failure_index as usize).min(STEPS.len() - 1)])
+}
+
+/// Failure accounting for one station runner. A session that lasted at least
+/// `HEALTHY_SESSION_MIN` resets the streak, so long-running playback never
+/// accumulates toward the give-up threshold.
+#[derive(Debug, Default)]
+struct StreamRetry {
+    consecutive_failures: u32,
+}
+
+impl StreamRetry {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn after_attempt(&mut self, attempt_duration: Duration) -> Retry {
+        if attempt_duration >= HEALTHY_SESSION_MIN {
+            self.consecutive_failures = 0;
+        }
+        self.consecutive_failures += 1;
+        if self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+            Retry::GiveUp
+        } else {
+            Retry::After(respawn_backoff(self.consecutive_failures - 1))
+        }
+    }
+}
+
+/// Runs one direct or YouTube station under a supervisor: respawn ffplay
+/// whenever the stream ends or fails, re-resolving YouTube URLs each attempt,
+/// and give up (with a notification) after too many consecutive failures.
+pub(crate) async fn run_direct_runner(code: String) -> Result<()> {
+    let station = stations::find(&code)
+        .with_context(|| format!("unknown radio station '{code}'"))?;
+    run_station_stream_loop(*station).await
+}
+
+async fn run_station_stream_loop(station: Station) -> Result<()> {
+    let mut retry = StreamRetry::new();
+    loop {
+        let started = Instant::now();
+        let attempt = match station.kind {
+            StationKind::YouTubePlaylist => bail!("playlist stations use the playlist runner"),
+            // Resolution failures count as attempt failures: they feed the
+            // retry loop instead of killing the runner.
+            StationKind::Direct | StationKind::YouTube => match playable_url(station).await {
+                Ok(url) => ExternalPlayer::play_live_until_exit(url).await,
+                Err(error) => Err(error),
+            },
+        };
+        match attempt {
+            Ok(()) => tracing::debug!(station = %station.code, "radio stream ended"),
+            Err(error) => {
+                tracing::warn!(station = %station.code, error = %error, "radio stream attempt failed")
+            }
+        }
+        match retry.after_attempt(started.elapsed()) {
+            Retry::After(delay) => {
+                tracing::info!(
+                    station = %station.code,
+                    delay = delay.as_secs(),
+                    "respawning radio stream"
+                );
+                tokio::time::sleep(delay).await;
+            }
+            Retry::GiveUp => {
+                let message = format!(
+                    "lum radio: {} stopped after {MAX_CONSECUTIVE_FAILURES} failed stream attempts",
+                    station.description
+                );
+                tracing::error!(station = %station.code, "{message}");
+                notify_stream_lost(&message);
+                bail!("{message}");
+            }
+        }
+    }
+}
+
+fn notify_stream_lost(message: &str) {
+    if let Err(error) = notify_rust::Notification::new()
+        .summary("lum radio")
+        .body(message)
+        .show()
+    {
+        tracing::warn!(error = %error, "failed to show the radio give-up notification");
+    }
+}
+
 pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
     let urls = randomized_playlist_urls(&code)?;
     loop {
@@ -243,7 +355,7 @@ pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
                 }
             };
 
-            if let Err(error) = ExternalPlayer::play_until_exit(&stream_url).await {
+            if let Err(error) = ExternalPlayer::play_until_exit(stream_url).await {
                 let message = playlist_failure_message(&code, item_number, url, &error.to_string());
                 tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
                 bail!(message);
@@ -267,7 +379,8 @@ fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &s
 fn process_is_alive(state: &RadioState) -> bool {
     match state.process_kind {
         RadioProcessKind::Ffplay => ExternalPlayer::is_alive(state.pid, state.start_time),
-        RadioProcessKind::PlaylistRunner => {
+        RadioProcessKind::PlaylistRunner
+        | RadioProcessKind::DirectRunner => {
             ExternalPlayer::is_alive_any(state.pid, state.start_time)
         }
     }
@@ -276,7 +389,9 @@ fn process_is_alive(state: &RadioState) -> bool {
 fn stop_process(state: &RadioState) {
     match state.process_kind {
         RadioProcessKind::Ffplay => ExternalPlayer::stop(state.pid, state.start_time),
-        RadioProcessKind::PlaylistRunner => ExternalPlayer::stop_any(state.pid, state.start_time),
+        RadioProcessKind::PlaylistRunner | RadioProcessKind::DirectRunner => {
+            ExternalPlayer::stop_any(state.pid, state.start_time)
+        }
     }
 }
 
@@ -315,6 +430,8 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[test]
     fn routes_list_when_no_arg() {
@@ -486,5 +603,138 @@ mod tests {
                 "https://www.youtube.com/watch?v=oR4gjzXs5EE",
             ]
         );
+    }
+
+    #[test]
+    fn respawn_backoff_escalates_and_caps_at_thirty_seconds() {
+        assert_eq!(respawn_backoff(0), Duration::from_secs(2));
+        assert_eq!(respawn_backoff(1), Duration::from_secs(5));
+        assert_eq!(respawn_backoff(2), Duration::from_secs(15));
+        assert_eq!(respawn_backoff(3), Duration::from_secs(30));
+        assert_eq!(respawn_backoff(99), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn stream_retry_gives_up_after_five_consecutive_short_attempts() {
+        let mut retry = StreamRetry::new();
+        let short = Duration::from_secs(1);
+        for expected in [2, 5, 15, 30] {
+            assert_eq!(
+                retry.after_attempt(short),
+                Retry::After(Duration::from_secs(expected))
+            );
+        }
+        assert_eq!(retry.after_attempt(short), Retry::GiveUp);
+    }
+
+    #[test]
+    fn stream_retry_resets_after_a_healthy_session() {
+        let mut retry = StreamRetry::new();
+        for _ in 0..4 {
+            retry.after_attempt(Duration::from_secs(1));
+        }
+        // The 61s session is healthy, so the streak resets and backoff restarts.
+        assert_eq!(
+            retry.after_attempt(Duration::from_secs(61)),
+            Retry::After(Duration::from_secs(2))
+        );
+        assert_eq!(
+            retry.after_attempt(Duration::from_secs(1)),
+            Retry::After(Duration::from_secs(5))
+        );
+    }
+
+    /// End-to-end respawn probe: the runner must spawn a fresh ffplay after a
+    /// permanent stream failure (HTTP 404, like an expired stream URL).
+    #[tokio::test]
+    async fn station_runner_respawns_after_a_permanent_stream_failure() {
+        if !player::playback_tests_enabled() {
+            eprintln!("skipping: set LUM_RADIO_PLAYBACK_TESTS=1 to run");
+            return;
+        }
+        let Some(bytes) = player::fixture_mp3() else {
+            eprintln!("skipping: ffmpeg not available for fixture generation");
+            return;
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let accepts = Arc::new(AtomicUsize::new(0));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fixture");
+        let addr = listener.local_addr().expect("fixture address");
+        {
+            let stop = stop.clone();
+            let accepts = accepts.clone();
+            std::thread::spawn(move || {
+                use std::io::ErrorKind;
+
+                listener.set_nonblocking(true).expect("nonblocking listener");
+                loop {
+                    if stop.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            let attempt = accepts.fetch_add(1, Ordering::Relaxed);
+                            let bytes = bytes.clone();
+                            let stop = stop.clone();
+                            std::thread::spawn(move || {
+                                use std::io::Write as _;
+
+                                let mut stream = stream;
+                                if attempt == 0 {
+                                    // A permanent HTTP failure, like an expired
+                                    // stream URL that reconnect cannot heal.
+                                    let _ = stream.write_all(
+                                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                                    );
+                                    return;
+                                }
+                                let _ = stream.write_all(
+                                    b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nConnection: close\r\n\r\n",
+                                );
+                                loop {
+                                    if stop.load(Ordering::Relaxed) {
+                                        return;
+                                    }
+                                    if stream.write_all(&bytes).is_err() {
+                                        return;
+                                    }
+                                }
+                            });
+                        }
+                        Err(ref error) if error.kind() == ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(50));
+                        }
+                        Err(_) => return,
+                    }
+                }
+            });
+        }
+        // Station is Copy and the runner takes it by value; only the URL
+        // must be leaked, because the catalog models URLs as &'static str.
+        let url: &'static str =
+            Box::leak(format!("http://{addr}/stream.mp3").into_boxed_str());
+        let station = Station {
+            code: "fx404",
+            description: "fixture 404 station",
+            url,
+            kind: StationKind::Direct,
+        };
+        let runner = tokio::spawn(run_station_stream_loop(station));
+        // The first attempt fails fast; after the 2s backoff the runner must
+        // respawn ffplay, which connects as the second fixture connection.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline && accepts.load(Ordering::Relaxed) < 2 {
+            assert!(!runner.is_finished(), "runner exited before respawning");
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let served = accepts.load(Ordering::Relaxed);
+        assert!(
+            served >= 2,
+            "runner never respawned (connections served: {served})"
+        );
+        assert!(!runner.is_finished(), "runner gave up too early");
+        stop.store(true, Ordering::Relaxed);
+        runner.abort();
+        let _ = Command::new("pkill").args(["-f", url]).status();
     }
 }

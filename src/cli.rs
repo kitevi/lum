@@ -33,6 +33,9 @@ pub enum Commands {
     /// Internal radio playlist loop runner.
     #[usage(name = "__radio_playlist_runner", hide)]
     RadioPlaylistRunner { code: String },
+    /// Internal radio station loop runner.
+    #[usage(name = "__radio_direct_runner", hide)]
+    RadioDirectRunner { code: String },
     /// Internal Git credential helper.
     #[usage(name = "__git_credential", hide)]
     GitCredential { route_id: String, operation: String },
@@ -357,6 +360,7 @@ mod tests {
             | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::RadioPlaylistRunner { .. }
+            | Commands::RadioDirectRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Apps { .. }
@@ -379,6 +383,7 @@ mod tests {
             | Commands::Env { .. }
             | Commands::Completions { .. }
             | Commands::RadioPlaylistRunner { .. }
+            | Commands::RadioDirectRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Apps { .. }
