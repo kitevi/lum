@@ -77,7 +77,7 @@ fn where_am_i() -> Result<()> {
 
 fn sync() -> Result<()> {
     let path = config_path()?;
-    config::harden_config_permissions(&path)?;
+    crate::private_file::harden(&path)?;
     let identities = load_config()?;
     ensure_ssh_keygen_on_path()?;
     cleanup_old_backups()?;

@@ -41,6 +41,19 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         size_mb
     );
 
+    println!(
+        "{} - Extracting archive to a staging directory...",
+        timestamp()
+    );
+    let extract_path = tmp_path.clone();
+    let extract_home = home.clone();
+    let (staging_dir, staged_target) = tokio::task::spawn_blocking(move || {
+        archive::extract_to_staging(&extract_path, &extract_home, target)
+    })
+    .await
+    .context("archive extraction task failed")?
+    .context("failed to extract archive")?;
+
     let target_path = target.target_path(&home);
     let mut existing_backup = None;
     if target_path.exists() {
@@ -70,23 +83,21 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         cleanup_old_backups(&home, target.backup_prefix, KEEP_BACKUPS)?;
     }
 
-    println!(
-        "{} - Extracting archive to {}...",
-        timestamp(),
-        home.display()
-    );
-    let extract_path = tmp_path.clone();
-    let extract_home = home.clone();
-    let extract_result =
-        tokio::task::spawn_blocking(move || archive::extract_tar_gz(&extract_path, &extract_home))
-            .await
-            .context("archive extraction task failed")?;
-    if let Err(error) = extract_result {
+    println!("{} - Moving {} into place...", timestamp(), target.name);
+    let moved = std::fs::rename(&staged_target, &target_path);
+    let cleaned = std::fs::remove_dir_all(&staging_dir);
+    if let Err(error) = moved {
         if let Some(backup_path) = &existing_backup {
-            println!("{} - Extraction failed, restoring backup...", timestamp());
+            println!("{} - Move failed, restoring backup...", timestamp());
             let _ = std::fs::rename(backup_path, &target_path);
         }
-        return Err(error).context("failed to extract archive");
+        return Err(error).context("failed to move restored directory into place");
+    }
+    if let Err(error) = cleaned {
+        println!(
+            "{} - Warning: failed to remove staging directory: {error}",
+            timestamp()
+        );
     }
 
     println!("{} - {} restored successfully!", timestamp(), target.name);

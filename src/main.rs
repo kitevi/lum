@@ -9,6 +9,7 @@ mod git_id;
 mod github;
 mod logging;
 mod paths;
+mod private_file;
 mod radio;
 mod repos;
 mod tools;

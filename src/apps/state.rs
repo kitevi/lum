@@ -27,6 +27,8 @@ pub(crate) struct ArtifactState {
     pub release_tag: String,
     pub asset_name: String,
     pub download_url: String,
+    #[serde(default)]
+    pub checksum: Option<String>,
 }
 
 pub(crate) struct LocalStatus {

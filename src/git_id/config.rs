@@ -76,18 +76,6 @@ pub fn create_private_config(path: &Path, content: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub fn harden_config_permissions(path: &Path) -> Result<()> {
-    let _ = path;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = std::fs::metadata(path)?.permissions();
-        permissions.set_mode(0o600);
-        std::fs::set_permissions(path, permissions)?;
-    }
-    Ok(())
-}
-
 pub fn ensure_private_config_permissions(path: &Path) -> Result<()> {
     let _ = path;
     #[cfg(unix)]

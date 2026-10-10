@@ -48,10 +48,7 @@ pub(crate) fn download_asset(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {
-    let Some(expected) = expected.filter(|s| !s.trim().is_empty()) else {
-        return Ok(());
-    };
+pub(crate) fn sha256_file(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 8192];
@@ -62,13 +59,59 @@ pub(crate) fn verify_sha256(path: &Path, expected: Option<&str>) -> Result<()> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = hasher
+    Ok(hasher
         .finalize()
         .iter()
         .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    if !actual.eq_ignore_ascii_case(expected.trim()) {
-        anyhow::bail!("checksum mismatch for {}", path.display());
+        .collect())
+}
+
+/// Missing or blank expected digests are treated as unpinned.
+pub(crate) fn verify_checksum(expected: Option<&str>, actual: &str, subject: &str) -> Result<()> {
+    let Some(expected) = expected.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    if !actual.eq_ignore_ascii_case(expected) {
+        anyhow::bail!(
+            "checksum mismatch for {subject}: expected sha256 {expected}, downloaded {actual}"
+        );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sha256_file_matches_known_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset");
+        std::fs::write(&path, b"hello").unwrap();
+        assert_eq!(
+            sha256_file(&path).unwrap(),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn verify_checksum_ignores_unpinned_values() {
+        assert!(verify_checksum(None, "abc", "tool release v1").is_ok());
+        assert!(verify_checksum(Some(""), "abc", "tool release v1").is_ok());
+        assert!(verify_checksum(Some("   "), "abc", "tool release v1").is_ok());
+    }
+
+    #[test]
+    fn verify_checksum_accepts_matching_digest_case_insensitively() {
+        assert!(verify_checksum(Some("ABCDEF"), "abcdef", "tool release v1").is_ok());
+    }
+
+    #[test]
+    fn verify_checksum_rejects_mismatched_digest() {
+        let error = verify_checksum(Some("aabbcc"), "deadbeef", "tool release v1").unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("checksum mismatch for tool release v1"));
+        assert!(message.contains("aabbcc"));
+        assert!(message.contains("deadbeef"));
+    }
 }

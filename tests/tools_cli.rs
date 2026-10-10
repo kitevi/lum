@@ -84,6 +84,34 @@ fn tools_install_uses_local_artifact_override_and_records_managed_state() {
 }
 
 #[test]
+fn tools_install_verifies_pinned_checksum_for_same_release() {
+    let home = TempDir::new().unwrap();
+    let artifact = home.path().join("scc-source");
+    std::fs::write(&artifact, "fake scc").unwrap();
+
+    lum_with_env(&home)
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc"])
+        .assert()
+        .success();
+
+    std::fs::write(&artifact, "fake scc (tampered)").unwrap();
+    lum_with_env(&home)
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc", "--force"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("checksum mismatch"));
+
+    let fresh = TempDir::new().unwrap();
+    lum_with_env(&fresh)
+        .env("LUM_TOOLS_TEST_ARTIFACT_SCC", &artifact)
+        .args(["tools", "install", "scc"])
+        .assert()
+        .success();
+}
+
+#[test]
 fn tools_install_protects_unmanaged_files_without_force() {
     let home = TempDir::new().unwrap();
     let bin = home.path().join("data").join("lum").join("bin");

@@ -64,6 +64,24 @@ pub(crate) fn install_app(
     let temp_dir = tempfile::Builder::new().prefix("lum-apps-").tempdir()?;
     let download = temp_dir.path().join(&artifact.asset_name);
     crate::github::download_asset(&artifact.download_url, &download)?;
+    let mut stored = load_state()?;
+    let downloaded_sha256 = crate::github::sha256_file(&download)?;
+    let pinned = stored
+        .apps
+        .get(spec.name)
+        .filter(|previous| {
+            previous.artifact.release_tag == artifact.release_tag
+                && previous.artifact.asset_name == artifact.asset_name
+        })
+        .and_then(|previous| previous.artifact.checksum.as_deref());
+    crate::github::verify_checksum(
+        pinned,
+        &downloaded_sha256,
+        &format!(
+            "{} release {} asset {}",
+            spec.name, artifact.release_tag, artifact.asset_name
+        ),
+    )?;
     let extract_dir = temp_dir.path().join("extract");
     fs::create_dir_all(&extract_dir)?;
     let file = fs::File::open(&download)?;
@@ -75,7 +93,6 @@ pub(crate) fn install_app(
     fs_extra::dir::copy(&bundle, &dir, &fs_extra::dir::CopyOptions::new())
         .with_context(|| format!("failed to copy {} to {}", spec.app_bundle, dir.display()))?;
 
-    let mut stored = load_state()?;
     let now = SystemTime::now();
     let installed_at = preserve_installed_at
         .or_else(|| stored.apps.get(spec.name).map(|s| s.installed_at))
@@ -90,6 +107,7 @@ pub(crate) fn install_app(
             release_tag: artifact.release_tag.clone(),
             asset_name: artifact.asset_name.clone(),
             download_url: artifact.download_url.clone(),
+            checksum: Some(downloaded_sha256),
         },
     };
     stored.apps.insert(spec.name.to_owned(), app_state);

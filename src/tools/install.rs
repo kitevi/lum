@@ -23,11 +23,32 @@ pub(crate) fn install_artifact(
     let temp_dir = tempfile::Builder::new().prefix("lum-tools-").tempdir()?;
     let download = temp_dir.path().join(&artifact.asset_name);
     crate::github::download_asset(&artifact.download_url, &download)?;
-    crate::github::verify_sha256(&download, artifact.checksum_sha256.as_deref())?;
+    let mut stored = load_state()?;
+    let downloaded_sha256 = crate::github::sha256_file(&download)?;
+    let pinned = stored
+        .tools
+        .get(spec.name)
+        .filter(|previous| {
+            previous.artifact.release_tag == artifact.release_tag
+                && previous.artifact.asset_name == artifact.asset_name
+        })
+        .and_then(|previous| previous.artifact.checksum.as_deref());
+    let expected = artifact
+        .checksum_sha256
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or(pinned);
+    crate::github::verify_checksum(
+        expected,
+        &downloaded_sha256,
+        &format!(
+            "{} release {} asset {}",
+            spec.name, artifact.release_tag, artifact.asset_name
+        ),
+    )?;
     let source = materialize_binary(&download, temp_dir.path(), artifact)?;
     artifact::install_executable(&source, &target)?;
 
-    let mut stored = load_state()?;
     let now = SystemTime::now();
     let installed_at = preserve_installed_at
         .or_else(|| stored.tools.get(spec.name).map(|s| s.installed_at))
@@ -42,7 +63,7 @@ pub(crate) fn install_artifact(
             release_tag: artifact.release_tag.clone(),
             asset_name: artifact.asset_name.clone(),
             download_url: artifact.download_url.clone(),
-            checksum: artifact.checksum_sha256.clone(),
+            checksum: Some(downloaded_sha256),
         },
     };
     stored.tools.insert(spec.name.to_owned(), tool_state);

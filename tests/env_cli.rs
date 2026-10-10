@@ -28,6 +28,29 @@ fn env_set_persists_and_init_replays_export() {
 }
 
 #[test]
+fn env_set_writes_owner_only_state_file() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "tinyfish", "secret-value"])
+        .assert()
+        .success();
+
+    let state = home
+        .path()
+        .join("config")
+        .join("lum")
+        .join("env-state.json");
+    assert!(state.exists());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&state).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+}
+
+#[test]
 fn env_rejects_unknown_aliases() {
     let home = TempDir::new().unwrap();
 

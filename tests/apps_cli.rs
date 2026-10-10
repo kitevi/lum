@@ -26,6 +26,27 @@ fn apps_with_env(home: &TempDir) -> Command {
 }
 
 #[test]
+fn apps_install_verifies_pinned_checksum_for_same_release() {
+    let home = TempDir::new().unwrap();
+    let artifact = write_fixture_zip(&home);
+
+    apps_with_env(&home)
+        .env("LUM_APPS_TEST_ARTIFACT_OPENEMU", &artifact)
+        .args(["apps", "install", "openemu"])
+        .assert()
+        .success()
+        .stdout(contains("\u{2713} Installed openemu"));
+
+    std::fs::write(&artifact, "tampered zip bytes").unwrap();
+    apps_with_env(&home)
+        .env("LUM_APPS_TEST_ARTIFACT_OPENEMU", &artifact)
+        .args(["apps", "install", "openemu", "--force"])
+        .assert()
+        .failure()
+        .stderr(contains("checksum mismatch"));
+}
+
+#[test]
 fn apps_status_reports_missing_app() {
     let home = TempDir::new().unwrap();
 
