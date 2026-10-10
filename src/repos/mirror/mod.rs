@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rayon::prelude::*;
 
 use super::ensure_git_on_path;
 use crate::cli::MirrorCommand;
@@ -115,24 +116,11 @@ fn sync(jobs: usize) -> Result<()> {
     std::fs::create_dir_all(&mirror)
         .map_err(|e| anyhow::anyhow!("creating mirror directory: {e}"))?;
 
-    let jobs = jobs.max(1);
-    let mut any_error = false;
-    std::thread::scope(|scope| {
-        for chunk in repos.chunks(jobs) {
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|repo| {
-                    let mirror = mirror.clone();
-                    scope.spawn(move || sync_one(repo, &mirror))
-                })
-                .collect();
-
-            for handle in handles {
-                if handle.join().unwrap_or(true) {
-                    any_error = true;
-                }
-            }
-        }
+    let any_error = super::worker_pool(jobs, repos.len())?.install(|| {
+        repos
+            .par_iter()
+            .map(|repo| sync_one(repo, &mirror))
+            .reduce(|| false, |any_error, failed| any_error || failed)
     });
     if any_error {
         anyhow::bail!("some mirror operations failed");
@@ -175,30 +163,18 @@ fn status(jobs: usize, offline: bool) -> Result<()> {
         return Ok(());
     }
     let mirror = mirror_dir()?;
-    let jobs = jobs.max(1);
+    let outcomes = super::worker_pool(jobs, repos.len())?.install(|| {
+        repos
+            .par_iter()
+            .map(|repo| status_one(repo, &mirror, offline))
+            .collect::<Vec<_>>()
+    });
     let mut any_behind = false;
     let mut any_error = false;
-
-    std::thread::scope(|scope| {
-        for chunk in repos.chunks(jobs) {
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|repo| {
-                    let mirror = mirror.clone();
-                    scope.spawn(move || status_one(repo, &mirror, offline))
-                })
-                .collect();
-
-            for handle in handles {
-                let outcome = handle.join().unwrap_or(StatusOutcome {
-                    behind: false,
-                    error: true,
-                });
-                any_behind |= outcome.behind;
-                any_error |= outcome.error;
-            }
-        }
-    });
+    for outcome in outcomes {
+        any_behind |= outcome.behind;
+        any_error |= outcome.error;
+    }
 
     if any_error {
         std::process::exit(1);

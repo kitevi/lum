@@ -1,4 +1,6 @@
 use anyhow::Result;
+use ignore::WalkBuilder;
+use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 use super::ensure_git_on_path;
@@ -30,49 +32,41 @@ pub fn run(args: &ScanArgs) -> Result<()> {
 }
 
 fn scan_path(root: &Path, include_hidden: bool, jobs: usize, offline: bool) -> Result<()> {
-    let mut repos = Vec::new();
-    walk(root, include_hidden, &mut repos)?;
+    let mut repos = walk(root, include_hidden);
     repos.sort_by(|a, b| a.path.cmp(&b.path));
     if offline {
         eprintln!("info: offline mode; using cached remote refs only");
     }
 
-    let jobs = jobs.max(1);
-    std::thread::scope(|scope| {
-        for chunk in repos.chunks(jobs) {
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|repo| {
-                    scope.spawn(move || {
-                        inspect_repo(&repo.path, offline).map(|status| (&repo.path, status))
-                    })
-                })
-                .collect();
-
-            for handle in handles {
-                let (path, status) = handle
-                    .join()
-                    .unwrap_or_else(|_| panic!("git status worker panicked"))?;
-                println!(
-                    "{}  {}  {}; {}",
-                    path.display(),
-                    status.branch,
-                    status.worktree,
-                    render_upstream(&status)
-                );
-                if let FetchStatus::Failed(message) = &status.fetch {
-                    eprintln!(
-                        "  warning: git fetch failed for {}: {message}",
-                        path.display()
-                    );
-                }
-                if status.status_failed {
-                    eprintln!("  warning: git status failed for {}", path.display());
-                }
-            }
+    if repos.is_empty() {
+        return Ok(());
+    }
+    let results = super::worker_pool(jobs, repos.len())?.install(|| {
+        repos
+            .par_iter()
+            .map(|repo| inspect_repo(&repo.path, offline).map(|status| (&repo.path, status)))
+            .collect::<Vec<_>>()
+    });
+    for result in results {
+        let (path, status) = result?;
+        println!(
+            "{}  {}  {}; {}",
+            path.display(),
+            status.branch,
+            status.worktree,
+            render_upstream(&status)
+        );
+        if let FetchStatus::Failed(message) = &status.fetch {
+            eprintln!(
+                "  warning: git fetch failed for {}: {message}",
+                path.display()
+            );
         }
-        Ok(())
-    })
+        if status.status_failed {
+            eprintln!("  warning: git status failed for {}", path.display());
+        }
+    }
+    Ok(())
 }
 
 struct FoundRepo {
@@ -108,57 +102,29 @@ fn render_upstream(status: &RepoStatus) -> String {
     }
 }
 
-fn walk(dir: &Path, include_hidden: bool, repos: &mut Vec<FoundRepo>) -> Result<()> {
-    let is_git_dir = dir.join(".git").exists();
-    if is_git_dir {
-        repos.push(FoundRepo {
-            path: dir.to_path_buf(),
-        });
-    }
-
-    // Continue walking inside repos so nested repos are reported too, but never
-    // descend into Git's own metadata directory.
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) => {
-            eprintln!("warning: cannot enter {}: {e}", dir.display());
-            return Ok(());
-        }
-    };
-
-    for entry in entries {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-
-        // Skip .git directories
-        if name_str == ".git" {
-            continue;
-        }
-
-        // Skip dot-entries unless --hidden
-        if !include_hidden && name_str.starts_with('.') {
-            continue;
-        }
-
-        let path = entry.path();
-
-        // Skip symlinks
-        let metadata = match std::fs::symlink_metadata(&path) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        if metadata.is_symlink() {
-            continue;
-        }
-        if !metadata.is_dir() {
-            continue;
-        }
-
-        walk(&path, include_hidden, repos)?;
-    }
-
-    Ok(())
+fn walk(dir: &Path, include_hidden: bool) -> Vec<FoundRepo> {
+    WalkBuilder::new(dir)
+        .standard_filters(false)
+        .hidden(!include_hidden)
+        .follow_links(false)
+        .filter_entry(|entry| {
+            entry.depth() == 0 || entry.file_name() != std::ffi::OsStr::new(".git")
+        })
+        .build()
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(entry),
+            Err(error) => {
+                eprintln!("warning: {error}");
+                None
+            }
+        })
+        .filter(|entry| {
+            entry.file_type().is_some_and(|ft| ft.is_dir()) && entry.path().join(".git").exists()
+        })
+        .map(|entry| FoundRepo {
+            path: entry.into_path(),
+        })
+        .collect()
 }
 
 fn inspect_repo(path: &Path, offline: bool) -> Result<RepoStatus> {

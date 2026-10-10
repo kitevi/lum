@@ -20,8 +20,8 @@ The install task:
 
 1. builds `lum` with `cargo build --release`
 2. selects a user-owned install directory from `PATH`
-3. copies `target/release/lum` or `target/release/lum.exe` into that directory
-4. sets executable permissions on Unix
+3. stages `target/release/lum` or `target/release/lum.exe` in a unique temporary file in that directory
+4. sets executable permissions on Unix, then replaces the installed binary
 5. prints the installed path
 
 ## Install Directory Policy

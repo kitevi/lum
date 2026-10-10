@@ -284,8 +284,8 @@ impl StreamRetry {
 /// whenever the stream ends or fails, re-resolving YouTube URLs each attempt,
 /// and give up (with a notification) after too many consecutive failures.
 pub(crate) async fn run_direct_runner(code: String) -> Result<()> {
-    let station = stations::find(&code)
-        .with_context(|| format!("unknown radio station '{code}'"))?;
+    let station =
+        stations::find(&code).with_context(|| format!("unknown radio station '{code}'"))?;
     run_station_stream_loop(*station).await
 }
 
@@ -379,8 +379,7 @@ fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &s
 fn process_is_alive(state: &RadioState) -> bool {
     match state.process_kind {
         RadioProcessKind::Ffplay => ExternalPlayer::is_alive(state.pid, state.start_time),
-        RadioProcessKind::PlaylistRunner
-        | RadioProcessKind::DirectRunner => {
+        RadioProcessKind::PlaylistRunner | RadioProcessKind::DirectRunner => {
             ExternalPlayer::is_alive_any(state.pid, state.start_time)
         }
     }
@@ -430,8 +429,8 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
     fn routes_list_when_no_arg() {
@@ -666,7 +665,9 @@ mod tests {
             std::thread::spawn(move || {
                 use std::io::ErrorKind;
 
-                listener.set_nonblocking(true).expect("nonblocking listener");
+                listener
+                    .set_nonblocking(true)
+                    .expect("nonblocking listener");
                 loop {
                     if stop.load(Ordering::Relaxed) {
                         return;
@@ -711,8 +712,7 @@ mod tests {
         }
         // Station is Copy and the runner takes it by value; only the URL
         // must be leaked, because the catalog models URLs as &'static str.
-        let url: &'static str =
-            Box::leak(format!("http://{addr}/stream.mp3").into_boxed_str());
+        let url: &'static str = Box::leak(format!("http://{addr}/stream.mp3").into_boxed_str());
         let station = Station {
             code: "fx404",
             description: "fixture 404 station",

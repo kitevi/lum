@@ -109,19 +109,11 @@ fn preferred_dirs(home: &Path) -> Vec<PathBuf> {
 }
 
 fn fallback_dirs(home: &Path) -> Vec<PathBuf> {
-    if cfg!(windows) {
-        vec![
-            home.join("Desktop"),
-            home.join("Downloads"),
-            home.to_path_buf(),
-        ]
-    } else {
-        vec![
-            home.join("Desktop"),
-            home.join("Downloads"),
-            home.to_path_buf(),
-        ]
-    }
+    vec![
+        home.join("Desktop"),
+        home.join("Downloads"),
+        home.to_path_buf(),
+    ]
 }
 
 fn home_dir() -> Result<PathBuf> {
@@ -168,18 +160,19 @@ fn install_binary(src: &Path, dst: &Path) -> Result<()> {
     if !src.is_file() {
         bail!("built binary is missing: {}", src.display());
     }
-    let tmp = dst.with_file_name(format!(
-        ".{}.{}",
-        dst.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("lum"),
-        std::process::id()
-    ));
-    fs::copy(src, &tmp)
-        .with_context(|| format!("failed to copy {} to {}", src.display(), tmp.display()))?;
-    set_executable(&tmp)?;
-    fs::rename(&tmp, dst)
-        .with_context(|| format!("failed to move {} to {}", tmp.display(), dst.display()))?;
+    let temp = tempfile::NamedTempFile::new_in(dst.parent().unwrap_or(Path::new(".")))
+        .with_context(|| format!("failed to stage {}", dst.display()))?;
+    fs::copy(src, temp.path()).with_context(|| {
+        format!(
+            "failed to copy {} to {}",
+            src.display(),
+            temp.path().display()
+        )
+    })?;
+    set_executable(temp.path())?;
+    temp.persist(dst)
+        .map_err(|error| error.error)
+        .with_context(|| format!("failed to install {}", dst.display()))?;
     Ok(())
 }
 
@@ -233,6 +226,19 @@ mod tests {
     }
 
     #[test]
+    fn fallback_dirs_match_installer_policy() {
+        let home = Path::new("home");
+        assert_eq!(
+            fallback_dirs(home),
+            [
+                home.join("Desktop"),
+                home.join("Downloads"),
+                home.to_path_buf()
+            ]
+        );
+    }
+
+    #[test]
     fn prefix_must_be_inside_home() {
         let home = PathBuf::from(if cfg!(windows) {
             r"C:\Users\pun"
@@ -263,5 +269,43 @@ mod tests {
     fn binary_name_uses_windows_extension_only_on_windows() {
         let expected = if cfg!(windows) { "lum.exe" } else { "lum" };
         assert_eq!(binary_name("lum"), expected);
+    }
+
+    #[test]
+    fn failed_install_preserves_target_and_cleans_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("lum");
+        fs::write(&source, b"new").unwrap();
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("keep"), b"old").unwrap();
+
+        let result = install_binary(&source, &target);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(target.join("keep")).unwrap(), b"old");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn install_replaces_existing_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("lum");
+        fs::write(&source, b"new").unwrap();
+        fs::write(&target, b"old").unwrap();
+
+        install_binary(&source, &target).unwrap();
+
+        assert_eq!(fs::read(&target).unwrap(), b"new");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(target).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+        }
     }
 }

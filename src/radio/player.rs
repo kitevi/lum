@@ -276,8 +276,17 @@ pub(super) fn fixture_mp3() -> Option<Vec<u8>> {
         ));
         let status = Command::new(ffmpeg)
             .args([
-                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "2", "-b:a", "32k",
-                "-f", "mp3", "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=mono",
+                "-t",
+                "2",
+                "-b:a",
+                "32k",
+                "-f",
+                "mp3",
+                "-y",
             ])
             .arg(&staging)
             .stdout(Stdio::null())

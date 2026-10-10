@@ -32,7 +32,7 @@ Output: `<path>  <branch>  <status>; <upstream-sync>`
 | `--offline` | Use cached remote refs only; do not fetch |
 | `-j N` | Max concurrent git operations (default 4) |
 
-Skips symlinks, `.git/` directories, and (by default) hidden directories. Reports nested repos.
+Skips symlinks, `.git/` directories, and (by default) hidden directories. Reports nested repos, including paths excluded by `.gitignore` or `.ignore` files.
 
 ## Mirror (`repos mirror`)
 
@@ -79,6 +79,14 @@ Where `basename` is the repo URL's last path segment with `.git` stripped, and `
 ### Safety
 
 `validate_in_mirror` ensures all git operations target paths inside the CodeMirror directory (path-traversal guard).
+
+## Worker Pools
+
+`repos scan`, `mirror sync`, and `mirror status` use a dedicated bounded worker pool per command. `-j` limits concurrent repository operations; zero means one worker, and the pool never exceeds the number of repositories. Workers accept another repository as soon as they finish instead of waiting for a batch.
+
+Scan results are buffered and printed in path order after all inspections finish. Mirror commands retain per-repository progress and attempt every configured repository before aggregating errors. For mirror status, errors (exit 1) take precedence over behind or missing repositories (exit 2).
+
+See [ADR 0018](../../docs/adr/0018-repository-worker-pools-use-rayon.md) for the scheduling and reporting trade-offs.
 
 ## Watch (`repos mirror watch`)
 

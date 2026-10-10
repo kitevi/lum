@@ -42,3 +42,13 @@ Existing unmanaged files in the install path are protected by default. `--force`
 ## Implementation
 
 Use a clean Rust implementation. Keep the behavior and resolver logic from vex where useful, but do not port the Go structure directly. Avoid shelling out to `curl`, `tar`, or `unzip`; downloads, archive extraction, checksums, and installation should be pure Rust and cross-platform.
+
+## Version Ordering
+
+`scc` versions use SemVer precedence: prereleases precede stable releases, and build metadata does not affect ordering. A leading `v` is accepted, and omitted minor or patch components default to zero.
+
+`universal-ctags` nightly versions use calendar dates (`YYYY.MM.DD`); commit metadata after `+` does not affect ordering.
+
+Identical version strings are unchanged. Differing versions that cannot be parsed report an error instead of silently treating invalid components as zero. `tools update --force` bypasses version ordering.
+
+See [ADR 0016](../../docs/adr/0016-tool-version-ordering.md) for the format and error-handling decisions.

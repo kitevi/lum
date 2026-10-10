@@ -229,7 +229,7 @@ fn extract_and_install(kind: ArchiveKind, archive_data: &[u8], local: &Path) -> 
 }
 
 fn extract_tar_xz_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
-    let decoder = xz2::read::XzDecoder::new(Cursor::new(archive_data));
+    let decoder = lzma_rust2::XzReader::new(Cursor::new(archive_data), false);
     let mut archive = tar::Archive::new(decoder);
     let dir = local
         .parent()
@@ -358,6 +358,36 @@ struct FfmpegState {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn extract_tar_xz_installs_ffmpeg_and_ffplay_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join(ffmpeg_binary_name());
+        let archive = include_bytes!("../tests/fixtures/executables.tar.xz");
+
+        extract_and_install(ArchiveKind::TarXz, archive, &local).unwrap();
+
+        assert_eq!(std::fs::read(local).unwrap(), b"fixture ffmpeg\n");
+        assert_eq!(
+            std::fs::read(dir.path().join(ffplay_binary_name())).unwrap(),
+            b"fixture ffplay\n"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn extract_tar_xz_rejects_corrupt_header_without_replacing_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join(ffmpeg_binary_name());
+        std::fs::write(&local, b"existing").unwrap();
+        let mut archive = include_bytes!("../tests/fixtures/executables.tar.xz").to_vec();
+        archive[0] ^= 0xff;
+
+        assert!(extract_and_install(ArchiveKind::TarXz, &archive, &local).is_err());
+
+        assert_eq!(std::fs::read(local).unwrap(), b"existing");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn extract_zip_with_root_level_ffmpeg() {

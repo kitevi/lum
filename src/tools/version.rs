@@ -1,7 +1,8 @@
-use std::path::Path;
-use std::process::Command;
+use std::{cmp::Ordering, path::Path, process::Command};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use chrono::NaiveDate;
+use semver::Version;
 
 use super::catalog::ToolSpec;
 
@@ -35,27 +36,33 @@ fn extract_version(text: &str) -> Option<String> {
         })
 }
 
-pub(crate) fn compare_versions(a: &str, b: &str) -> i32 {
-    let parse = |s: &str| {
-        s.trim_start_matches('v')
-            .split(['.', '-'])
-            .take(3)
-            .map(|p| p.parse::<u64>().unwrap_or(0))
-            .collect::<Vec<_>>()
-    };
-    let av = parse(a);
-    let bv = parse(b);
-    for i in 0..3 {
-        let aa = *av.get(i).unwrap_or(&0);
-        let bb = *bv.get(i).unwrap_or(&0);
-        if aa < bb {
-            return -1;
-        }
-        if aa > bb {
-            return 1;
-        }
+pub(crate) fn compare_versions(spec: &ToolSpec, a: &str, b: &str) -> Result<Ordering> {
+    if a == b {
+        return Ok(Ordering::Equal);
     }
-    0
+    if spec.name == "universal-ctags" {
+        let parse = |raw: &str| {
+            let version = raw.trim().trim_start_matches('v');
+            let date = version.split_once('+').map_or(version, |(date, _)| date);
+            NaiveDate::parse_from_str(date, "%Y.%m.%d")
+                .with_context(|| format!("invalid nightly version {raw:?}"))
+        };
+        return Ok(parse(a)?.cmp(&parse(b)?));
+    }
+    Ok(parse_version(a)?.cmp_precedence(&parse_version(b)?))
+}
+
+fn parse_version(raw: &str) -> Result<Version> {
+    let version = raw.trim().trim_start_matches('v');
+    let (core, suffix) = version
+        .find(['-', '+'])
+        .map_or((version, ""), |index| version.split_at(index));
+    let normalized = match core.split('.').count() {
+        1 => format!("{core}.0.0{suffix}"),
+        2 => format!("{core}.0{suffix}"),
+        _ => version.to_owned(),
+    };
+    Version::parse(&normalized).with_context(|| format!("invalid version {raw:?}"))
 }
 
 #[cfg(test)]
@@ -85,9 +92,61 @@ mod tests {
         );
     }
 
+    fn compare_scc(a: &str, b: &str) -> Result<Ordering> {
+        let spec = super::super::catalog::lookup_tool("scc").unwrap();
+        compare_versions(spec, a, b)
+    }
+
     #[test]
     fn compare_tool_runtime_vs_release() {
-        // Before the fix, compare_versions("tool-1.8.1", "1.8.1") returned -1
-        assert_eq!(compare_versions("1.8.1", "1.8.1"), 0);
+        assert_eq!(compare_scc("1.8.1", "1.8.1").unwrap(), Ordering::Equal);
+    }
+
+    #[test]
+    fn compare_prerelease_precedes_stable() {
+        assert_eq!(compare_scc("1.0.0-rc.1", "1.0.0").unwrap(), Ordering::Less);
+    }
+
+    #[test]
+    fn compare_ignores_build_metadata() {
+        assert_eq!(
+            compare_scc("1.2.3+build.7", "1.2.3").unwrap(),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn compare_normalizes_prefixes_and_abbreviated_versions() {
+        for version in ["v1", "1.0", "v1.0.0"] {
+            assert_eq!(compare_scc(version, "1.0.0").unwrap(), Ordering::Equal);
+        }
+        assert_eq!(compare_scc("v1.2-rc.1", "1.2.0").unwrap(), Ordering::Less);
+    }
+
+    #[test]
+    fn compare_ctags_nightly_dates() {
+        let spec = super::super::catalog::lookup_tool("universal-ctags").unwrap();
+        assert_eq!(
+            compare_versions(spec, "2026.09.30+old", "2026.10.08+new").unwrap(),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_versions(spec, "2026.10.08+old", "2026.10.08+new").unwrap(),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn compare_rejects_malformed_versions() {
+        for version in ["unsupported", "1.2.3.4", "1.0.01"] {
+            assert!(compare_scc(version, "1.0.0").is_err());
+        }
+        let spec = super::super::catalog::lookup_tool("universal-ctags").unwrap();
+        assert!(compare_versions(spec, "2026.02.30", "2026.03.01").is_err());
+    }
+
+    #[test]
+    fn compare_identical_opaque_tags_as_unchanged() {
+        assert_eq!(compare_scc("test", "test").unwrap(), Ordering::Equal);
     }
 }

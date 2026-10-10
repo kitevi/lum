@@ -103,7 +103,7 @@ fn update_cmd(tool: &str, force: bool) -> Result<()> {
     let previous = status.effective_version().unwrap_or("unknown").to_owned();
     if !force
         && previous != "unknown"
-        && version::compare_versions(&previous, &artifact.version) >= 0
+        && version::compare_versions(spec, &previous, &artifact.version)?.is_ge()
     {
         println!("{} is already up to date ({})", spec.name, previous);
         return Ok(());
@@ -136,14 +136,17 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
                 installed += 1;
             }
             Some(current)
-                if version::compare_versions(current, &artifact.version) < 0 && dry_run =>
+                if version::compare_versions(spec, current, &artifact.version)?.is_lt()
+                    && dry_run =>
             {
                 println!(
                     "• {}: would update {} -> {}",
                     spec.name, current, artifact.version
                 )
             }
-            Some(current) if version::compare_versions(current, &artifact.version) < 0 => {
+            Some(current)
+                if version::compare_versions(spec, current, &artifact.version)?.is_lt() =>
+            {
                 print!(
                     "• {}: updating {} -> {}... ",
                     spec.name, current, artifact.version

@@ -352,6 +352,116 @@ fn scan_accepts_jobs_limit_flag() {
 }
 
 #[test]
+fn scan_does_not_apply_ignore_files_or_enter_git_metadata() {
+    let tmp = TempDir::new().unwrap();
+    create_clean_repo(tmp.path());
+    std::fs::write(tmp.path().join(".gitignore"), "git-excluded-repo/\n").unwrap();
+    std::fs::write(tmp.path().join(".ignore"), "ignore-excluded-repo/\n").unwrap();
+    for name in ["git-excluded-repo", "ignore-excluded-repo"] {
+        let repo = tmp.path().join(name);
+        std::fs::create_dir(&repo).unwrap();
+        create_clean_repo(&repo);
+    }
+    std::fs::create_dir_all(tmp.path().join(".git/metadata-repo/.git")).unwrap();
+
+    let mut cmd = repos_scan_offline_in(tmp.path());
+    cmd.arg("--hidden");
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("git-excluded-repo"))
+        .stdout(predicates::str::contains("ignore-excluded-repo"))
+        .stdout(predicates::str::contains("metadata-repo").not());
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_skips_symlinked_repositories() {
+    let tmp = TempDir::new().unwrap();
+    let external = TempDir::new().unwrap();
+    create_clean_repo(external.path());
+    std::os::unix::fs::symlink(external.path(), tmp.path().join("linked-repo")).unwrap();
+
+    repos_scan_offline_in(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("linked-repo").not());
+}
+
+#[test]
+fn scan_accepts_explicit_hidden_root() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join(".hidden-repo");
+    std::fs::create_dir(&repo).unwrap();
+    create_clean_repo(&repo);
+
+    let mut cmd = repos_scan_offline_in(tmp.path());
+    cmd.arg(&repo);
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains(".hidden-repo"));
+}
+
+#[test]
+fn scan_reports_worktree_with_git_file() {
+    let tmp = TempDir::new().unwrap();
+    let main = tmp.path().join("main-repo");
+    let linked = tmp.path().join("linked-worktree");
+    std::fs::create_dir(&main).unwrap();
+    create_clean_repo(&main);
+    git(
+        &main,
+        &["worktree", "add", "-b", "linked", linked.to_str().unwrap()],
+    );
+    assert!(linked.join(".git").is_file());
+
+    repos_scan_offline_in(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("main-repo"))
+        .stdout(predicates::str::contains("linked-worktree"));
+}
+
+#[test]
+fn scan_warns_about_missing_root() {
+    let tmp = TempDir::new().unwrap();
+    let mut cmd = repos_scan_offline_in(tmp.path());
+    cmd.arg(tmp.path().join("missing"));
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::is_empty())
+        .stderr(predicates::str::contains("warning:"));
+}
+
+#[test]
+fn scan_reports_repositories_in_path_order() {
+    let tmp = TempDir::new().unwrap();
+    for name in ["zeta", "alpha", "middle"] {
+        let repo = tmp.path().join(name);
+        std::fs::create_dir(&repo).unwrap();
+        create_clean_repo(&repo);
+    }
+    let output = repos_scan_offline_in(tmp.path())
+        .args(["-j", "2"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(output).unwrap();
+    let names: Vec<_> = text
+        .lines()
+        .map(|line| {
+            std::path::Path::new(line.split("  ").next().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(names, ["alpha", "middle", "zeta"]);
+}
+
+#[test]
 fn scan_reports_missing_git_before_scanning() {
     let tmp = TempDir::new().unwrap();
     let empty_path = tmp.path().join("empty-path");
@@ -543,6 +653,134 @@ exit 1
     perms.set_mode(0o755);
     std::fs::set_permissions(&git, perms).unwrap();
     bin
+}
+
+#[cfg(unix)]
+#[test]
+fn mirror_sync_reuses_worker_before_slow_job_finishes() {
+    let home = TempDir::new().unwrap();
+    write_mirror_config(
+        &home,
+        &[
+            ("https://example.com/slow.git", "main"),
+            ("https://example.com/fast.git", "main"),
+            ("https://example.com/next.git", "main"),
+        ],
+    );
+    let state = home.path().join("scheduler");
+    std::fs::create_dir(&state).unwrap();
+    let fake_bin = fake_git_dir(&home);
+    std::fs::write(
+        fake_bin.join("git"),
+        r#"#!/bin/sh
+set -eu
+[ "$1" = clone ] || exit 1
+dst=""
+for arg in "$@"; do dst="$arg"; done
+case "$*" in
+  *"/slow.git"*)
+    attempts=0
+    while [ ! -f "$LUM_TEST_SCHEDULER_DIR/next-started" ]; do
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 200 ]; then
+        echo "an available worker was blocked by the slow job" >&2
+        exit 1
+      fi
+      sleep 0.025
+    done
+    ;;
+  *"/next.git"*) touch "$LUM_TEST_SCHEDULER_DIR/next-started" ;;
+esac
+mkdir -p "$dst/.git"
+"#,
+    )
+    .unwrap();
+    let path = format!(
+        "{}:{}",
+        fake_bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    lum_with_xdg(&home)
+        .env("PATH", path)
+        .env("LUM_TEST_SCHEDULER_DIR", &state)
+        .args(["repos", "mirror", "sync", "-j", "2"])
+        .assert()
+        .success();
+    assert!(state.join("next-started").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn mirror_sync_continues_after_individual_errors() {
+    let home = TempDir::new().unwrap();
+    write_mirror_config(
+        &home,
+        &[
+            ("https://example.com/bad.git", "main"),
+            ("https://example.com/one.git", "main"),
+            ("https://example.com/two.git", "main"),
+        ],
+    );
+    let fake_bin = fake_git_dir(&home);
+    std::fs::write(
+        fake_bin.join("git"),
+        r#"#!/bin/sh
+case "$*" in *"/bad.git"*) echo "fixture clone failure" >&2; exit 1 ;; esac
+dst=""
+for arg in "$@"; do dst="$arg"; done
+mkdir -p "$dst/.git"
+"#,
+    )
+    .unwrap();
+    let path = format!(
+        "{}:{}",
+        fake_bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    lum_with_xdg(&home)
+        .env("PATH", path)
+        .args(["repos", "mirror", "sync", "-j", "1"])
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("some mirror operations failed"));
+    let mirror = home.path().join("Documents/CodeMirror");
+    assert!(mirror.join("one-main/.git").is_dir());
+    assert!(mirror.join("two-main/.git").is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn mirror_status_errors_take_precedence_over_missing_repositories() {
+    let home = TempDir::new().unwrap();
+    write_mirror_config(
+        &home,
+        &[
+            ("https://example.com/bad.git", "main"),
+            ("https://example.com/missing.git", "main"),
+        ],
+    );
+    std::fs::create_dir_all(home.path().join("Documents/CodeMirror/bad-main/.git")).unwrap();
+    let fake_bin = fake_git_dir(&home);
+    std::fs::write(
+        fake_bin.join("git"),
+        "#!/bin/sh\necho 'fixture status failure' >&2\nexit 1\n",
+    )
+    .unwrap();
+    let path = format!(
+        "{}:{}",
+        fake_bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    lum_with_xdg(&home)
+        .env("PATH", path)
+        .args(["repos", "mirror", "status", "--offline", "-j", "2"])
+        .assert()
+        .code(1)
+        .stdout(predicates::str::contains("missing-main: missing"))
+        .stderr(predicates::str::contains("error reading local HEAD"));
 }
 
 #[cfg(unix)]

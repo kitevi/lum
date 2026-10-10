@@ -6,7 +6,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
-use xz2::read::XzDecoder;
+use ignore::WalkBuilder;
+use lzma_rust2::XzReader;
 
 use super::catalog::ToolSpec;
 use super::platform::{ArchiveType, Artifact};
@@ -105,7 +106,7 @@ fn extract_archive(src: &Path, dest: &Path, archive_type: ArchiveType) -> Result
         }
         ArchiveType::TarXz => {
             let file = fs::File::open(src)?;
-            tar::Archive::new(XzDecoder::new(file)).unpack(dest)?;
+            tar::Archive::new(XzReader::new(file, false)).unpack(dest)?;
         }
         ArchiveType::Binary => {}
     }
@@ -113,16 +114,90 @@ fn extract_archive(src: &Path, dest: &Path, archive_type: ArchiveType) -> Result
 }
 
 fn find_file_named(dir: &Path, filename: &std::ffi::OsStr) -> Result<PathBuf> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if let Ok(found) = find_file_named(&path, filename) {
-                return Ok(found);
-            }
-        } else if path.file_name() == Some(filename) {
-            return Ok(path);
-        }
+    WalkBuilder::new(dir)
+        .standard_filters(false)
+        .follow_links(true)
+        .build()
+        .filter_map(Result::ok)
+        .find(|entry| {
+            entry.file_type().is_some_and(|ft| ft.is_file()) && entry.file_name() == filename
+        })
+        .map(|entry| entry.into_path())
+        .context("not found")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn materialize_tar_xz_finds_nested_ctags() {
+        let dir = tempfile::tempdir().unwrap();
+        let download = dir.path().join("executables.tar.xz");
+        fs::write(
+            &download,
+            include_bytes!("../../tests/fixtures/executables.tar.xz"),
+        )
+        .unwrap();
+        let artifact = Artifact {
+            version: "2026.10.08".into(),
+            release_tag: "2026.10.08".into(),
+            asset_name: "executables.tar.xz".into(),
+            download_url: String::new(),
+            archive_type: ArchiveType::TarXz,
+            binary_path: "bin/ctags".into(),
+            checksum_sha256: None,
+        };
+
+        let source = materialize_binary(&download, dir.path(), &artifact).unwrap();
+
+        assert_eq!(fs::read(source).unwrap(), b"fixture ctags\n");
     }
-    Err(anyhow::anyhow!("not found"))
+
+    #[test]
+    fn extract_tar_xz_rejects_corrupt_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let download = dir.path().join("corrupt.tar.xz");
+        let destination = dir.path().join("extract");
+        fs::create_dir(&destination).unwrap();
+        let mut archive = include_bytes!("../../tests/fixtures/executables.tar.xz").to_vec();
+        archive[0] ^= 0xff;
+        fs::write(&download, archive).unwrap();
+
+        assert!(extract_archive(&download, &destination, ArchiveType::TarXz).is_err());
+        assert_eq!(fs::read_dir(destination).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn materialize_finds_binary_in_hidden_ignored_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let download = dir.path().join("release.tar.gz");
+        let file = fs::File::create(&download).unwrap();
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut archive = tar::Builder::new(encoder);
+        for (path, contents) in [
+            ("bundle/.ignore", &b"nested/\n"[..]),
+            ("bundle/nested/.bin/scc", &b"binary"[..]),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            archive.append_data(&mut header, path, contents).unwrap();
+        }
+        archive.into_inner().unwrap().finish().unwrap();
+        let artifact = Artifact {
+            version: "1.0.0".into(),
+            release_tag: "v1.0.0".into(),
+            asset_name: "release.tar.gz".into(),
+            download_url: String::new(),
+            archive_type: ArchiveType::TarGz,
+            binary_path: "scc".into(),
+            checksum_sha256: None,
+        };
+
+        let source = materialize_binary(&download, dir.path(), &artifact).unwrap();
+
+        assert_eq!(fs::read(source).unwrap(), b"binary");
+    }
 }
