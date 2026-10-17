@@ -77,7 +77,7 @@ fn env_set_opencode_emits_export_and_aliases_lists_it() {
         .args(["env", "aliases"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("opencode   → OPENCODE_API_KEY"));
+        .stdout(predicates::str::contains("opencode    → OPENCODE_API_KEY"));
 
     lum_with_env(&home)
         .args(["env", "init"])
@@ -102,7 +102,7 @@ fn env_set_deepseek_emits_export_and_aliases_lists_it() {
         .args(["env", "aliases"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("deepseek   → DEEPSEEK_API_KEY"));
+        .stdout(predicates::str::contains("deepseek    → DEEPSEEK_API_KEY"));
 
     lum_with_env(&home)
         .args(["env", "init"])

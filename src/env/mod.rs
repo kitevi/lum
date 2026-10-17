@@ -22,7 +22,7 @@ pub fn run(command: EnvCommand) -> Result<()> {
         EnvCommand::List => list(),
         EnvCommand::Aliases => {
             for (alias, variable) in catalog::ALIASES {
-                println!("{alias:<10} → {variable}");
+                println!("{alias:<11} → {variable}");
             }
             Ok(())
         }
@@ -98,12 +98,12 @@ fn list() -> Result<()> {
     for row in &rows {
         match row.value {
             Some(value) => println!(
-                "  {:<10} {:<24} = {}",
+                "  {:<11} {:<24} = {}",
                 row.alias,
                 row.variable,
                 catalog::mask_secret(value)
             ),
-            None => println!("  {:<10} {:<24}   (not set)", row.alias, row.variable),
+            None => println!("  {:<11} {:<24}   (not set)", row.alias, row.variable),
         }
     }
     println!();

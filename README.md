@@ -149,6 +149,7 @@ Available aliases:
 
 | Alias | Environment variable |
 | --- | --- |
+| `coralbricks` | `CORALBRICKS_API_KEY` |
 | `deepseek` | `DEEPSEEK_API_KEY` |
 | `exa` | `EXA_API_KEY` |
 | `hypercharm` | `HYPERCHARM_API_KEY` |
