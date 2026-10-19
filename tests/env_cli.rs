@@ -89,6 +89,25 @@ fn env_set_opencode_emits_export_and_aliases_lists_it() {
 }
 
 #[test]
+fn env_set_opendesign_resolves_to_api_key_variable() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "opendesign", "od-key"])
+        .assert()
+        .success()
+        .stdout("export OPENDESIGN_API_KEY='od-key'\n");
+
+    lum_with_env(&home)
+        .args(["env", "aliases"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "opendesign  → OPENDESIGN_API_KEY",
+        ));
+}
+
+#[test]
 fn env_set_deepseek_emits_export_and_aliases_lists_it() {
     let home = TempDir::new().unwrap();
 

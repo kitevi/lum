@@ -154,6 +154,7 @@ Available aliases:
 | `exa` | `EXA_API_KEY` |
 | `hypercharm` | `HYPERCHARM_API_KEY` |
 | `opencode` | `OPENCODE_API_KEY` |
+| `opendesign` | `OPENDESIGN_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `tinyfish` | `TINYFISH_API_KEY` |
 
