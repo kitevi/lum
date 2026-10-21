@@ -4,13 +4,24 @@
 
 ## CLI Shape
 
-- `lum radio` lists built-in stations.
-- `lum radio list` explicitly lists built-in stations.
+- `lum radio` lists built-in stations grouped by genre.
+- `lum radio list` explicitly lists built-in stations grouped by genre.
 - `lum radio <code>` starts a station in the background, replacing any current station.
 - `lum radio rand` starts a random built-in station, skipping the current one.
 - `lum radio status` prints the remembered playback state.
 - `lum radio stop` stops playback.
-- Preserve existing `ruv` station codes and the plain output style.
+- Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
+- Listings keep the plain output style, with each `code  description` row indented under its genre heading.
+
+## Station Catalog
+
+Each entry in `stations.rs` carries a code, a standalone description, a stream URL, a kind, and a genre. The genre is catalog data, not a display convention: `format_listing` groups every non-empty genre under its label in this order:
+
+Electroacoustic and concrète, Experimental and avant-garde, Minimal and reductionist, Drone, Dark ambient, Space and ambient, Field recordings, Experimental electronic, World, Lo-fi.
+
+Descriptions must stand alone because `playing` and `status` print only the code and description. Retiring a station needs no state migration: `status` prints the remembered description, and `rand` excludes a remembered code whether or not it is still in the catalog.
+
+The RadCap entries use raw IP URLs, so they are the catalog entries most likely to stop working when a host moves. Check them before assuming a playback failure is local.
 
 ## Random Station Selection
 
@@ -19,7 +30,7 @@
 - The pool is every station in `stations::all()`, drawn uniformly. Station kind is ignored, so YouTube and playlist stations are eligible.
 - The station remembered in `radio-player.json` is excluded by code, whether or not its process is still alive. Resolution reads that state before playback is stopped, so a failed draw leaves the current station alone.
 - If exclusion would empty the pool, resolution fails rather than replaying the current station.
-- `lum radio list` prints the station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
+- `lum radio list` prints the genre-grouped station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
 - The selector arm is matched before the station catch-all, so the selector always wins if a catalog entry is ever named `rand`.
 
 ## Playback Stack
@@ -43,7 +54,7 @@ The old pure-Rust foreground audio path is no longer the product direction for `
 
 ## Supported Streams
 
-Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist.
+Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist. Some RadCap and NTS endpoints serve ADTS AAC (`audio/aacp`); `ffplay` decodes it with no extra configuration.
 
 The `ytlf` station points at the channel `/live` URL (`https://www.youtube.com/@LofiGirl/live`), so yt-dlp resolves whatever Lofi Girl currently features live and the station survives their 24/7 stream rotations. Do not point it back at a `watch?v=` video URL: those video IDs rot each time the channel rotates its streams.
 
@@ -90,7 +101,7 @@ They drive the real ffplay spawn path against a local fixture server that drops,
 Manual live-stream testing requires `ffplay` and, for YouTube stations, `yt-dlp`:
 
 ```sh
-cargo run -- radio atma
+cargo run -- radio dron
 cargo run -- radio status
 cargo run -- radio stop
 ```

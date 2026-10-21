@@ -113,7 +113,7 @@ impl From<CompletionShell> for usage::complete::Shell {
 
 #[derive(Debug, usage::Args, Clone)]
 #[usage(
-    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio atma)\n  lum radio rand            Play a random station, never the current one\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
+    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio dron)\n  lum radio rand            Play a random station, never the current one\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
 )]
 pub struct RadioArgs {
     /// Command (list|status|stop|rand) or station code.
@@ -376,9 +376,9 @@ mod tests {
 
     #[test]
     fn parses_radio_with_station() {
-        let cli = parse(&["radio", "atma"]);
+        let cli = parse(&["radio", "dron"]);
         match cli.command {
-            Commands::Radio(args) => assert_eq!(args.arg.as_deref(), Some("atma")),
+            Commands::Radio(args) => assert_eq!(args.arg.as_deref(), Some("dron")),
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }

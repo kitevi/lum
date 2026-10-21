@@ -474,13 +474,13 @@ mod tests {
 
     #[test]
     fn station_runner_command_invokes_hidden_top_level_command() {
-        let command = station_runner_command("/bin/lum", "ssom");
+        let command = station_runner_command("/bin/lum", "dron");
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_string_lossy().to_string())
             .collect();
 
-        assert_eq!(args, ["__radio_direct_runner", "ssom"]);
+        assert_eq!(args, ["__radio_direct_runner", "dron"]);
     }
 
     async fn spawn_probe_ffplay(url: &str) -> Result<PlayerProcess> {

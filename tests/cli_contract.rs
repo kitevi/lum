@@ -86,13 +86,14 @@ fn radio_help_advertises_the_random_selector() {
 }
 
 #[test]
-fn radio_list_shows_stations_then_the_random_selector() {
+fn radio_list_groups_stations_by_genre_then_shows_the_random_selector() {
     Command::cargo_bin("lum")
         .unwrap()
         .args(["radio", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("atma  atma.fm Channel 1"))
+        .stdout(predicates::str::contains("Electroacoustic and concrète"))
+        .stdout(predicates::str::contains("  conc  RadCap Musique Concrète"))
         .stdout(predicates::str::contains(
             "rand  Play a random built-in station",
         ));

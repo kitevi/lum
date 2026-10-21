@@ -16,7 +16,7 @@ use crate::yt::resolve_yt_dlp;
 use player::ExternalPlayer;
 use stations::{Station, StationKind};
 
-const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio atma)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
+const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio dron)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
 
 /// How a play intent was formed. `Explicit` names a station code; `Random`
 /// defers the choice to runtime selection over the station catalog.
@@ -429,6 +429,7 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
+    use crate::radio::stations::Genre;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -451,10 +452,10 @@ mod tests {
     fn routes_code_as_play_command() {
         assert_eq!(
             parse_command(&RadioArgs {
-                arg: Some("atma".into())
+                arg: Some("conc".into())
             }),
             RadioCommand::Play {
-                selection: Selection::Explicit("atma".into())
+                selection: Selection::Explicit("conc".into())
             }
         );
     }
@@ -497,6 +498,8 @@ mod tests {
 
     #[test]
     fn legacy_state_defaults_to_ffplay_process_kind() {
+        // "atma" is retired from the catalog; state files written before the
+        // catalog swap can still name it.
         let state: RadioState = serde_json::from_str(
             r#"{"pid":123,"start_time":456,"code":"atma","description":"atma.fm Channel 1"}"#,
         )
@@ -512,7 +515,8 @@ mod tests {
         let message = error.to_string();
 
         assert!(message.starts_with("station not found: nope"));
-        assert!(message.contains("atma  atma.fm Channel 1"));
+        assert!(message.contains("Electroacoustic and concrète"));
+        assert!(message.contains("conc  RadCap Musique Concrète"));
         assert!(message.contains("rand  Play a random built-in station"));
     }
 
@@ -528,9 +532,9 @@ mod tests {
     #[test]
     fn random_station_draws_from_the_catalog_and_skips_the_remembered_one() {
         for _ in 0..200 {
-            let station = random_station(Some("atma".into())).expect("catalog has stations");
+            let station = random_station(Some("conc".into())).expect("catalog has stations");
 
-            assert_ne!(station.code, "atma");
+            assert_ne!(station.code, "conc");
             assert!(stations::all().iter().any(|s| s.code == station.code));
         }
     }
@@ -718,6 +722,7 @@ mod tests {
             description: "fixture 404 station",
             url,
             kind: StationKind::Direct,
+            genre: Genre::Drone,
         };
         let runner = tokio::spawn(run_station_stream_loop(station));
         // The first attempt fails fast; after the 2s backoff the runner must
