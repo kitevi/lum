@@ -24,7 +24,7 @@ pub(crate) fn install_font(spec: &FontSpec) -> Result<()> {
     fs::create_dir_all(&staging_dir)?;
 
     let url = test_artifact_url(spec).unwrap_or_else(|| spec.download_url.to_owned());
-    download_font(&url, &zip_path)?;
+    crate::github::download_asset(&url, &zip_path)?;
     extract_ttf_files(spec, &zip_path, &staging_dir)?;
 
     if font_dir.exists() {
@@ -44,27 +44,6 @@ fn test_artifact_url(spec: &FontSpec) -> Option<String> {
         spec.name.replace('-', "_").to_ascii_uppercase()
     );
     std::env::var(env_key).ok()
-}
-
-fn download_font(url: &str, dest: &Path) -> Result<()> {
-    // If the URL is a local file path (for testing), copy it directly
-    let path = Path::new(url);
-    if path.exists() {
-        fs::copy(path, dest)?;
-        return Ok(());
-    }
-
-    let mut response = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .user_agent("lum-font/1.0")
-        .build()?
-        .get(url)
-        .send()?
-        .error_for_status()?;
-
-    let mut out = fs::File::create(dest)?;
-    io::copy(&mut response, &mut out)?;
-    Ok(())
 }
 
 fn extract_ttf_files(spec: &FontSpec, zip_path: &Path, dest: &Path) -> Result<()> {

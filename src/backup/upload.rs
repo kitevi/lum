@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
-use reqwest::{Client, multipart};
 use std::path::Path;
+use ureq::unversioned::multipart::{Form, Part};
 
 // Public file host used by `lum backup`. This must work with the current
 // upload/restore flow:
@@ -42,39 +42,24 @@ use std::path::Path;
 //       curl -F 'reqtype=fileupload' -F 'time=24h' -F 'fileToUpload=@file.tar.gz' https://litterbox.catbox.moe/resources/internals/api.php
 pub(crate) const BACKUP_SERVICE_URL: &str = "https://x0.at";
 
-pub(crate) fn client() -> Result<Client> {
-    Client::builder()
-        .user_agent(format!("lum/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .context("failed to build HTTP client")
-}
-
-pub(crate) async fn upload_archive(client: &Client, archive: &Path) -> Result<String> {
+pub(crate) fn upload_archive(archive: &Path) -> Result<String> {
     let file_name = archive
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("archive.tar.gz")
         .to_owned();
-    let bytes = tokio::fs::read(archive)
-        .await
-        .with_context(|| format!("failed to open archive {}", archive.display()))?;
-    let part = multipart::Part::bytes(bytes).file_name(file_name);
-    let form = multipart::Form::new().part("file", part);
-    let response = client
+    let part = Part::file(archive)
+        .with_context(|| format!("failed to open archive {}", archive.display()))?
+        .file_name(&file_name);
+    let response = crate::github::agent()
         .post(BACKUP_SERVICE_URL)
-        .multipart(form)
-        .send()
-        .await
+        .send(Form::new().part("file", part))
         .context("failed to upload")?
-        .error_for_status()
-        .context("upload failed")?;
+        .body_mut()
+        .read_to_string()
+        .context("failed to read upload response")?;
 
-    let url = clean_url(
-        &response
-            .text()
-            .await
-            .context("failed to read upload response")?,
-    );
+    let url = clean_url(&response);
     if url.is_empty() {
         bail!("upload failed: empty response");
     }
@@ -84,34 +69,12 @@ pub(crate) async fn upload_archive(client: &Client, archive: &Path) -> Result<St
     Ok(url)
 }
 
-pub(crate) async fn download_archive(client: &Client, url: &str, destination: &Path) -> Result<()> {
-    let bytes = client
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("failed to download {url}"))?
-        .error_for_status()
-        .with_context(|| format!("failed to download {url}"))?
-        .bytes()
-        .await
-        .with_context(|| format!("failed to read downloaded archive from {url}"))?;
-    tokio::fs::write(destination, bytes)
-        .await
-        .with_context(|| {
-            format!(
-                "failed to write downloaded archive to {}",
-                destination.display()
-            )
-        })?;
-    Ok(())
-}
-
 pub(crate) fn restore_url(code: &str) -> String {
     format!("{BACKUP_SERVICE_URL}/{code}")
 }
 
 pub(crate) fn code_from_url(url: &str) -> Result<String> {
-    let path = reqwest::Url::parse(url)
+    let path = url::Url::parse(url)
         .with_context(|| format!("failed to parse upload URL {url}"))?
         .path()
         .to_owned();

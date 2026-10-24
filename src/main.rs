@@ -19,8 +19,7 @@ mod yt;
 use anyhow::Result;
 use cli::{Cli, Commands};
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let cli = Cli::parse();
     if let Commands::GitCredential {
         route_id,
@@ -34,35 +33,31 @@ async fn main() {
         return;
     }
 
-    if let Err(error) = run(cli).await {
+    if let Err(error) = run(cli) {
         eprintln!("{error:#}");
         tracing::error!(error = ?error, "command failed");
         std::process::exit(1);
     }
 }
 
-async fn run(cli: Cli) -> Result<()> {
+fn run(cli: Cli) -> Result<()> {
     let _log_guard = logging::init()?;
     match cli.command {
         Commands::Completions { shell } => {
             print!("{}", Cli::completion_script(shell.into()));
             Ok(())
         }
-        Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code).await,
-        Commands::RadioDirectRunner { code } => radio::run_direct_runner(code).await,
+        Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code),
+        Commands::RadioDirectRunner { code } => radio::run_direct_runner(code),
         Commands::GitCredential { .. } => unreachable!("credential helper handled before logging"),
-        Commands::Backup { command } => backup::run(command).await,
-        Commands::Radio(args) => radio::run(args).await,
+        Commands::Backup { command } => backup::run(command),
+        Commands::Radio(args) => radio::run(args),
         Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),
         Commands::GitId { command } => git_id::run(command),
-        Commands::Tools { command } => {
-            tokio::task::spawn_blocking(move || tools::run(command)).await?
-        }
-        Commands::Apps { command } => {
-            tokio::task::spawn_blocking(move || apps::run(command)).await?
-        }
-        Commands::Yt { command } => yt::run(command).await,
+        Commands::Tools { command } => tools::run(command),
+        Commands::Apps { command } => apps::run(command),
+        Commands::Yt { command } => yt::run(command),
         Commands::Font { command } => font::run(command),
         Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
     }

@@ -19,7 +19,7 @@ const DISABLE_AUTO_PROVISION_ENV: &str = "LUM_FFMPEG_DISABLE_AUTO_PROVISION";
 /// 2. Otherwise, use the auto-provisioned copy at `data_dir()/deps/ffmpeg`.
 ///    If the auto-provisioned copy doesn't exist yet, download it.
 ///    If it exists but is stale (>14 days since download), re-download it.
-pub(crate) async fn resolve() -> Result<PathBuf> {
+pub(crate) fn resolve() -> Result<PathBuf> {
     if let Ok(path) = which::which("ffmpeg") {
         tracing::debug!("using ffmpeg from PATH: {}", path.display());
         return Ok(path);
@@ -36,7 +36,7 @@ pub(crate) async fn resolve() -> Result<PathBuf> {
     if local.exists() {
         if is_stale(&state_path) {
             tracing::info!("auto-provisioned ffmpeg is stale, refreshing");
-            if let Err(error) = try_update(&local, &state_path).await {
+            if let Err(error) = try_update(&local, &state_path) {
                 tracing::warn!(error = %error, "failed to update ffmpeg; using cached copy");
             }
         }
@@ -45,12 +45,12 @@ pub(crate) async fn resolve() -> Result<PathBuf> {
 
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create deps dir {}", dir.display()))?;
-    install_ffmpeg(&local, &state_path).await?;
+    install_ffmpeg(&local, &state_path)?;
     Ok(local)
 }
 
 /// Resolve the ffplay binary to use for radio playback.
-pub(crate) async fn resolve_ffplay() -> Result<PathBuf> {
+pub(crate) fn resolve_ffplay() -> Result<PathBuf> {
     if let Ok(path) = which::which("ffplay") {
         tracing::debug!("using ffplay from PATH: {}", path.display());
         return Ok(path);
@@ -63,7 +63,7 @@ pub(crate) async fn resolve_ffplay() -> Result<PathBuf> {
     }
 
     // Refresh the managed ffmpeg bundle; supported archives usually include ffplay too.
-    let _ = resolve().await;
+    let _ = resolve();
     if local.exists() {
         return Ok(local);
     }
@@ -105,72 +105,36 @@ fn is_stale(state_path: &Path) -> bool {
         > STALE_THRESHOLD
 }
 
-async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
-    install_ffmpeg(local, state_path).await
+fn try_update(local: &Path, state_path: &Path) -> Result<()> {
+    install_ffmpeg(local, state_path)
 }
 
-async fn install_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
+fn install_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
     if let Ok(test_artifact) = std::env::var(TEST_ARTIFACT_ENV) {
         install_from_local_artifact(Path::new(&test_artifact), local, state_path)?;
         return Ok(());
     }
 
-    download_ffmpeg(local, state_path).await
+    download_ffmpeg(local, state_path)
 }
 
-async fn download_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
+fn download_ffmpeg(local: &Path, state_path: &Path) -> Result<()> {
     let dl = resolve_download(std::env::consts::OS, std::env::consts::ARCH)?;
 
     let (download_url, kind) = match &dl {
         FfmpegDownload::Direct { url, kind } => (url.to_string(), *kind),
         FfmpegDownload::BtbN { asset_name, kind } => {
-            let info = fetch_latest_release_info(asset_name).await?;
-            (info.download_url, *kind)
+            let release = crate::github::latest_release("BtbN", "FFmpeg-Builds")?;
+            (release.asset_url(asset_name)?.to_owned(), *kind)
         }
     };
 
     tracing::info!("downloading ffmpeg from {download_url}");
 
-    let archive_data = reqwest::get(&download_url)
-        .await
-        .with_context(|| format!("failed to download ffmpeg from {download_url}"))?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let archive_data = crate::github::download_bytes(&download_url)?;
 
     extract_and_install(kind, &archive_data, local)?;
     write_state(state_path)
-}
-
-struct ReleaseInfo {
-    download_url: String,
-}
-
-async fn fetch_latest_release_info(asset_name: &str) -> Result<ReleaseInfo> {
-    let repo = "BtbN/FFmpeg-Builds";
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let resp: serde_json::Value = reqwest::Client::new()
-        .get(&url)
-        .header("User-Agent", "lum")
-        .send()
-        .await
-        .with_context(|| format!("failed to query GitHub API for {repo}"))?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    let download_url = resp["assets"]
-        .as_array()
-        .and_then(|assets| {
-            assets
-                .iter()
-                .find(|asset| asset["name"].as_str() == Some(asset_name))
-        })
-        .and_then(|asset| asset["browser_download_url"].as_str())
-        .with_context(|| format!("GitHub release missing asset '{asset_name}'"))?
-        .to_string();
-
-    Ok(ReleaseInfo { download_url })
 }
 
 #[derive(Debug, Clone, Copy)]

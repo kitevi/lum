@@ -6,22 +6,22 @@ mod upload;
 
 use crate::cli::BackupCommand;
 
-pub async fn run(command: BackupCommand) -> Result<()> {
+pub fn run(command: BackupCommand) -> Result<()> {
     match command {
-        BackupCommand::Bio { code } => run_target(target::BIO, code).await,
-        BackupCommand::Openemu { code } => run_target(target::OPENEMU, code).await,
+        BackupCommand::Bio { code } => run_target(target::BIO, code),
+        BackupCommand::Openemu { code } => run_target(target::OPENEMU, code),
     }
 }
 
-async fn run_target(target: target::BackupTarget, code: Option<String>) -> Result<()> {
+fn run_target(target: target::BackupTarget, code: Option<String>) -> Result<()> {
     target.ensure_current_os_allowed()?;
     match code {
-        Some(code) => restore::restore_backup(target, &code).await,
-        None => upload_target(target).await,
+        Some(code) => restore::restore_backup(target, &code),
+        None => upload_target(target),
     }
 }
 
-async fn upload_target(target: target::BackupTarget) -> Result<()> {
+fn upload_target(target: target::BackupTarget) -> Result<()> {
     let home = crate::paths::home_dir()?;
     let target_path = target.target_path(&home);
     if !target_path.exists() {
@@ -52,14 +52,7 @@ async fn upload_target(target: target::BackupTarget) -> Result<()> {
     let archive_path = archive_file.path().to_owned();
 
     println!("{} - Creating compressed archive...", timestamp());
-    let create_target = target;
-    let create_home = home.clone();
-    let create_archive_path = archive_path.clone();
-    tokio::task::spawn_blocking(move || {
-        archive::create_tar_gz(create_target, &create_home, &create_archive_path)
-    })
-    .await
-    .context("archive creation task failed")??;
+    archive::create_tar_gz(target, &home, &archive_path)?;
     let size_mb = archive_file.as_file().metadata()?.len() as f64 / (1024.0 * 1024.0);
     println!(
         "{} - Archive created successfully (size: {:.2} MB)",
@@ -67,23 +60,18 @@ async fn upload_target(target: target::BackupTarget) -> Result<()> {
         size_mb
     );
 
-    let client = upload::client()?;
     println!("{} - Uploading...", timestamp());
-    let url = upload::upload_archive(&client, &archive_path).await?;
+    let url = upload::upload_archive(&archive_path)?;
 
     println!("{} - Verifying upload...", timestamp());
     let verify_file = tempfile::Builder::new()
         .prefix(&format!("{}-verify-", target.name))
         .suffix(".tar.gz")
         .tempfile()?;
-    upload::download_archive(&client, &url, verify_file.path()).await?;
-    let verify_path = verify_file.path().to_owned();
-    tokio::task::spawn_blocking(move || archive::verify_tar_gz(&verify_path, target))
-        .await
-        .context("archive verification task failed")?
-        .context(
-            "upload verification failed; received file may be an error page instead of archive",
-        )?;
+    crate::github::download_asset(&url, verify_file.path())?;
+    archive::verify_tar_gz(verify_file.path(), target).context(
+        "upload verification failed; received file may be an error page instead of archive",
+    )?;
 
     println!("{} - Upload verified successfully!", timestamp());
     println!(
@@ -104,5 +92,5 @@ async fn upload_target(target: target::BackupTarget) -> Result<()> {
 }
 
 fn timestamp() -> String {
-    chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()
+    jiff::Zoned::now().strftime("%Y-%m-%d %H:%M").to_string()
 }

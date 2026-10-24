@@ -1,7 +1,6 @@
 use std::{cmp::Ordering, path::Path, process::Command};
 
 use anyhow::{Context, Result, bail};
-use chrono::NaiveDate;
 use semver::Version;
 
 use super::catalog::ToolSpec;
@@ -44,7 +43,7 @@ pub(crate) fn compare_versions(spec: &ToolSpec, a: &str, b: &str) -> Result<Orde
         let parse = |raw: &str| {
             let version = raw.trim().trim_start_matches('v');
             let date = version.split_once('+').map_or(version, |(date, _)| date);
-            NaiveDate::parse_from_str(date, "%Y.%m.%d")
+            jiff::civil::Date::strptime("%Y.%m.%d", date)
                 .with_context(|| format!("invalid nightly version {raw:?}"))
         };
         return Ok(parse(a)?.cmp(&parse(b)?));

@@ -1,12 +1,11 @@
 use anyhow::{Context, Result};
-use chrono::Local;
 use std::path::Path;
 
 use super::archive;
 use super::target::{BackupTarget, KEEP_BACKUPS};
 use super::upload;
 
-pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
+pub(crate) fn restore_backup(target: BackupTarget, code: &str) -> Result<()> {
     println!(
         "{} - Starting {} restore from code: {}",
         timestamp(),
@@ -14,24 +13,18 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         code
     );
     let home = crate::paths::home_dir()?;
-    let client = upload::client()?;
     let url = upload::restore_url(code);
     let tmp = tempfile::Builder::new()
         .prefix(&format!("{}-restore-", target.name))
         .suffix(".tar.gz")
         .tempfile()
         .context("failed to create temporary file")?;
-    let tmp_path = tmp.path().to_owned();
 
     println!("{} - Downloading...", timestamp());
-    upload::download_archive(&client, &url, &tmp_path).await?;
+    crate::github::download_asset(&url, tmp.path())?;
 
     println!("{} - Verifying downloaded archive...", timestamp());
-    let verify_path = tmp_path.clone();
-    tokio::task::spawn_blocking(move || archive::verify_tar_gz(&verify_path, target))
-        .await
-        .context("archive verification task failed")?
-        .context(
+    archive::verify_tar_gz(tmp.path(), target).context(
             "downloaded file is not a valid tar.gz archive; you may have entered the wrong code or the file may have expired",
         )?;
     let size_mb = tmp.as_file().metadata()?.len() as f64 / (1024.0 * 1024.0);
@@ -45,14 +38,8 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         "{} - Extracting archive to a staging directory...",
         timestamp()
     );
-    let extract_path = tmp_path.clone();
-    let extract_home = home.clone();
-    let (staging_dir, staged_target) = tokio::task::spawn_blocking(move || {
-        archive::extract_to_staging(&extract_path, &extract_home, target)
-    })
-    .await
-    .context("archive extraction task failed")?
-    .context("failed to extract archive")?;
+    let (staging_dir, staged_target) = archive::extract_to_staging(tmp.path(), &home, target)
+        .context("failed to extract archive")?;
 
     let target_path = target.target_path(&home);
     let mut existing_backup = None;
@@ -65,7 +52,7 @@ pub(crate) async fn restore_backup(target: BackupTarget, code: &str) -> Result<(
         let backup_path = home.join(format!(
             "{}{}",
             target.backup_prefix,
-            Local::now().format("%Y%m%d-%H%M%S")
+            jiff::Zoned::now().strftime("%Y%m%d-%H%M%S")
         ));
         std::fs::rename(&target_path, &backup_path).with_context(|| {
             format!(
@@ -150,5 +137,5 @@ fn cleanup_old_backups(home: &Path, backup_prefix: &str, keep_count: usize) -> R
 }
 
 fn timestamp() -> String {
-    Local::now().format("%Y-%m-%d %H:%M").to_string()
+    jiff::Zoned::now().strftime("%Y-%m-%d %H:%M").to_string()
 }

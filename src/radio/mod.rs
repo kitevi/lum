@@ -6,8 +6,6 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use rand::RngExt;
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::RadioArgs;
@@ -85,7 +83,7 @@ enum RadioProcessKind {
     DirectRunner,
 }
 
-pub async fn run(args: RadioArgs) -> Result<()> {
+pub fn run(args: RadioArgs) -> Result<()> {
     match parse_command(&args) {
         RadioCommand::List => {
             println!("{}\n\n{}", stations::format_reference(), COMMAND_HELP);
@@ -96,7 +94,7 @@ pub async fn run(args: RadioArgs) -> Result<()> {
             Ok(())
         }
         RadioCommand::Stop => stop(),
-        RadioCommand::Play { selection } => play(*resolve_station(selection)?).await,
+        RadioCommand::Play { selection } => play(*resolve_station(selection)?),
     }
 }
 
@@ -115,7 +113,7 @@ fn random_station(exclude_code: Option<String>) -> Result<&'static Station> {
 }
 
 fn choose_index(len: usize) -> usize {
-    rand::rng().random_range(0..len)
+    fastrand::usize(0..len)
 }
 
 /// Picks one station from `pool`. `choose` receives the pool length and must
@@ -127,7 +125,7 @@ fn random_station_in(
     stations::choose_station(pool, choose).ok_or_else(|| anyhow!("no random station available"))
 }
 
-async fn play(station: Station) -> Result<()> {
+fn play(station: Station) -> Result<()> {
     let _ = stop_existing();
     let (player, process_kind) = match station.kind {
         StationKind::YouTubePlaylist => (
@@ -174,10 +172,10 @@ fn print_status() -> Result<()> {
     Ok(())
 }
 
-async fn playable_url(station: Station) -> Result<String> {
+fn playable_url(station: Station) -> Result<String> {
     match station.kind {
         StationKind::Direct => Ok(station.url.to_string()),
-        StationKind::YouTube => resolve_youtube_stream_url(station.url).await,
+        StationKind::YouTube => resolve_youtube_stream_url(station.url),
         StationKind::YouTubePlaylist => bail!("playlist stations are not playable yet"),
     }
 }
@@ -191,8 +189,8 @@ fn stop_existing() -> Result<bool> {
     Ok(true)
 }
 
-async fn resolve_youtube_stream_url(url: &str) -> Result<String> {
-    let yt_dlp = resolve_yt_dlp().await?;
+fn resolve_youtube_stream_url(url: &str) -> Result<String> {
+    let yt_dlp = resolve_yt_dlp()?;
     let output = Command::new(yt_dlp)
         .args(youtube_stream_url_args(url))
         .output()
@@ -283,13 +281,13 @@ impl StreamRetry {
 /// Runs one direct or YouTube station under a supervisor: respawn ffplay
 /// whenever the stream ends or fails, re-resolving YouTube URLs each attempt,
 /// and give up (with a notification) after too many consecutive failures.
-pub(crate) async fn run_direct_runner(code: String) -> Result<()> {
+pub(crate) fn run_direct_runner(code: String) -> Result<()> {
     let station =
         stations::find(&code).with_context(|| format!("unknown radio station '{code}'"))?;
-    run_station_stream_loop(*station).await
+    run_station_stream_loop(*station)
 }
 
-async fn run_station_stream_loop(station: Station) -> Result<()> {
+fn run_station_stream_loop(station: Station) -> Result<()> {
     let mut retry = StreamRetry::new();
     loop {
         let started = Instant::now();
@@ -297,8 +295,8 @@ async fn run_station_stream_loop(station: Station) -> Result<()> {
             StationKind::YouTubePlaylist => bail!("playlist stations use the playlist runner"),
             // Resolution failures count as attempt failures: they feed the
             // retry loop instead of killing the runner.
-            StationKind::Direct | StationKind::YouTube => match playable_url(station).await {
-                Ok(url) => ExternalPlayer::play_live_until_exit(url).await,
+            StationKind::Direct | StationKind::YouTube => match playable_url(station) {
+                Ok(url) => ExternalPlayer::play_live_until_exit(url),
                 Err(error) => Err(error),
             },
         };
@@ -315,7 +313,7 @@ async fn run_station_stream_loop(station: Station) -> Result<()> {
                     delay = delay.as_secs(),
                     "respawning radio stream"
                 );
-                tokio::time::sleep(delay).await;
+                std::thread::sleep(delay);
             }
             Retry::GiveUp => {
                 let message = format!(
@@ -340,12 +338,12 @@ fn notify_stream_lost(message: &str) {
     }
 }
 
-pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
+pub(crate) fn run_playlist_runner(code: String) -> Result<()> {
     let urls = randomized_playlist_urls(&code)?;
     loop {
         for (index, url) in urls.iter().enumerate() {
             let item_number = index + 1;
-            let stream_url = match resolve_youtube_stream_url(url).await {
+            let stream_url = match resolve_youtube_stream_url(url) {
                 Ok(stream_url) => stream_url,
                 Err(error) => {
                     let message =
@@ -355,7 +353,7 @@ pub(crate) async fn run_playlist_runner(code: String) -> Result<()> {
                 }
             };
 
-            if let Err(error) = ExternalPlayer::play_until_exit(stream_url).await {
+            if let Err(error) = ExternalPlayer::play_until_exit(stream_url) {
                 let message = playlist_failure_message(&code, item_number, url, &error.to_string());
                 tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
                 bail!(message);
@@ -368,7 +366,7 @@ fn randomized_playlist_urls(code: &str) -> Result<Vec<&'static str>> {
     let mut urls = stations::playlist_urls(code)
         .with_context(|| format!("unknown radio playlist station '{code}'"))?
         .to_vec();
-    urls.shuffle(&mut rand::rng());
+    fastrand::shuffle(&mut urls);
     Ok(urls)
 }
 
@@ -649,8 +647,8 @@ mod tests {
 
     /// End-to-end respawn probe: the runner must spawn a fresh ffplay after a
     /// permanent stream failure (HTTP 404, like an expired stream URL).
-    #[tokio::test]
-    async fn station_runner_respawns_after_a_permanent_stream_failure() {
+    #[test]
+    fn station_runner_respawns_after_a_permanent_stream_failure() {
         if !player::playback_tests_enabled() {
             eprintln!("skipping: set LUM_RADIO_PLAYBACK_TESTS=1 to run");
             return;
@@ -724,13 +722,13 @@ mod tests {
             kind: StationKind::Direct,
             genre: Genre::Drone,
         };
-        let runner = tokio::spawn(run_station_stream_loop(station));
+        let runner = std::thread::spawn(move || run_station_stream_loop(station));
         // The first attempt fails fast; after the 2s backoff the runner must
         // respawn ffplay, which connects as the second fixture connection.
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline && accepts.load(Ordering::Relaxed) < 2 {
             assert!(!runner.is_finished(), "runner exited before respawning");
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            std::thread::sleep(Duration::from_millis(200));
         }
         let served = accepts.load(Ordering::Relaxed);
         assert!(
@@ -739,7 +737,8 @@ mod tests {
         );
         assert!(!runner.is_finished(), "runner gave up too early");
         stop.store(true, Ordering::Relaxed);
-        runner.abort();
+        // A thread cannot be aborted: with the fixture stopped, the runner's
+        // next ffplay fails to connect and the test process exit ends it.
         let _ = Command::new("pkill").args(["-f", url]).status();
     }
 }

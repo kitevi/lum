@@ -14,7 +14,7 @@ const TEST_ARTIFACT_ENV: &str = "LUM_YT_DLP_TEST_ARTIFACT";
 /// 2. Otherwise, use the auto-provisioned copy at `data_dir()/deps/yt-dlp`.
 ///    If the auto-provisioned copy doesn't exist yet, download it.
 ///    If it exists but is stale (>24h since last check), re-check and update.
-pub async fn resolve_yt_dlp() -> Result<PathBuf> {
+pub fn resolve_yt_dlp() -> Result<PathBuf> {
     // Check PATH first
     if let Ok(path) = which::which("yt-dlp") {
         tracing::debug!("using yt-dlp from PATH: {}", path.display());
@@ -29,7 +29,7 @@ pub async fn resolve_yt_dlp() -> Result<PathBuf> {
     if local.exists() {
         if is_stale(&state_path) {
             tracing::info!("auto-provisioned yt-dlp is stale, checking for update");
-            if let Err(e) = try_update(&local, &state_path).await {
+            if let Err(e) = try_update(&local, &state_path) {
                 tracing::warn!("failed to update yt-dlp: {e:#}; using cached copy");
             }
         }
@@ -42,7 +42,7 @@ pub async fn resolve_yt_dlp() -> Result<PathBuf> {
     if let Ok(test_artifact) = std::env::var(TEST_ARTIFACT_ENV) {
         install_from_local_artifact(Path::new(&test_artifact), &local, &state_path)?;
     } else {
-        download_yt_dlp(&local, &state_path).await?;
+        download_yt_dlp(&local, &state_path)?;
     }
     Ok(local)
 }
@@ -66,13 +66,13 @@ fn is_stale(state_path: &Path) -> bool {
         > STALE_THRESHOLD
 }
 
-async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
+fn try_update(local: &Path, state_path: &Path) -> Result<()> {
     let current_state: DepState = std::fs::read_to_string(state_path)
         .ok()
         .and_then(|d| serde_json::from_str(&d).ok())
         .unwrap_or_default();
 
-    let latest = fetch_latest_release_info().await?;
+    let latest = fetch_latest_release_info()?;
     if latest.version == current_state.version {
         // Same version — just update the timestamp
         let updated = DepState {
@@ -89,12 +89,7 @@ async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
         latest.version
     );
     let url = &latest.download_url;
-    let binary_data = reqwest::get(url)
-        .await
-        .with_context(|| format!("failed to download yt-dlp from {url}"))?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let binary_data = crate::github::download_bytes(url)?;
     artifact::write_executable(local, &binary_data)?;
 
     let state = DepState {
@@ -105,18 +100,13 @@ async fn try_update(local: &Path, state_path: &Path) -> Result<()> {
     Ok(())
 }
 
-async fn download_yt_dlp(local: &Path, state_path: &Path) -> Result<()> {
-    let info = fetch_latest_release_info().await?;
+fn download_yt_dlp(local: &Path, state_path: &Path) -> Result<()> {
+    let info = fetch_latest_release_info()?;
     let version = info.version.clone();
     tracing::info!("downloading yt-dlp {version}");
 
     let url = info.download_url.as_str();
-    let binary_data = reqwest::get(url)
-        .await
-        .with_context(|| format!("failed to download yt-dlp from {url}"))?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let binary_data = crate::github::download_bytes(url)?;
     artifact::write_executable(local, &binary_data)?;
 
     let state = DepState {
@@ -150,39 +140,13 @@ struct ReleaseInfo {
     download_url: String,
 }
 
-async fn fetch_latest_release_info() -> Result<ReleaseInfo> {
-    let repo = "yt-dlp/yt-dlp";
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let resp: serde_json::Value = reqwest::Client::new()
-        .get(&url)
-        .header("User-Agent", "lum")
-        .send()
-        .await
-        .with_context(|| format!("failed to query GitHub API for {repo}"))?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    let tag = resp["tag_name"]
-        .as_str()
-        .context("GitHub release missing tag_name")?
-        .to_string();
-
-    let asset_name = yt_dlp_asset_name();
-    let download_url = resp["assets"]
-        .as_array()
-        .and_then(|assets| {
-            assets
-                .iter()
-                .find(|a| a["name"].as_str() == Some(asset_name))
-        })
-        .and_then(|a| a["browser_download_url"].as_str())
-        .context(format!("GitHub release missing asset '{asset_name}'"))?
-        .to_string();
-
+fn fetch_latest_release_info() -> Result<ReleaseInfo> {
+    let release = crate::github::latest_release("yt-dlp", "yt-dlp")?;
     Ok(ReleaseInfo {
-        version: tag,
-        download_url,
+        download_url: release.asset_url(yt_dlp_asset_name())?.to_owned(),
+        version: release
+            .tag_name
+            .context("GitHub release missing tag_name")?,
     })
 }
 

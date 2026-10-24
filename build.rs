@@ -11,8 +11,8 @@ fn main() {
 }
 
 fn build_time() -> String {
-    chrono::Utc::now()
-        .format("%Y-%m-%d %H:%M:%S UTC")
+    jiff::Timestamp::now()
+        .strftime("%Y-%m-%d %H:%M:%S UTC")
         .to_string()
 }
 

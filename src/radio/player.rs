@@ -58,27 +58,24 @@ impl ExternalPlayer {
         kill_pid_any(pid, start_time);
     }
 
-    pub(super) async fn play_until_exit(url: String) -> Result<()> {
-        Self::play_ffplay_until_exit(ffplay_command, url).await
+    pub(super) fn play_until_exit(url: String) -> Result<()> {
+        Self::play_ffplay_until_exit(ffplay_command, url)
     }
 
     /// Like `play_until_exit`, but with live-stream reconnect recovery so
     /// dropped or stalled connections heal without exiting.
-    pub(super) async fn play_live_until_exit(url: String) -> Result<()> {
-        Self::play_ffplay_until_exit(live_stream_ffplay_command, url).await
+    pub(super) fn play_live_until_exit(url: String) -> Result<()> {
+        Self::play_ffplay_until_exit(live_stream_ffplay_command, url)
     }
 
-    async fn play_ffplay_until_exit(
-        build_command: impl Fn(String, &str) -> Command + Send + 'static,
+    fn play_ffplay_until_exit(
+        build_command: impl Fn(String, &str) -> Command,
         url: String,
     ) -> Result<()> {
-        let ffplay = ffmpeg::resolve_ffplay().await?;
+        let ffplay = ffmpeg::resolve_ffplay()?;
         let ffplay = ffplay.to_string_lossy().into_owned();
-        // The blocking wait must run off the async runtime: the station runner
-        // shares its runtime thread with other work in tests and in production.
-        let status = tokio::task::spawn_blocking(move || build_command(ffplay, &url).status())
-            .await
-            .context("ffplay task join failed")?
+        let status = build_command(ffplay, &url)
+            .status()
             .context("failed to start ffplay")?;
         if !status.success() {
             bail!("ffplay exited with code {:?}", status.code());
@@ -483,8 +480,8 @@ mod tests {
         assert_eq!(args, ["__radio_direct_runner", "dron"]);
     }
 
-    async fn spawn_probe_ffplay(url: &str) -> Result<PlayerProcess> {
-        let ffplay = ffmpeg::resolve_ffplay().await?;
+    fn spawn_probe_ffplay(url: &str) -> Result<PlayerProcess> {
+        let ffplay = ffmpeg::resolve_ffplay()?;
         let child = live_stream_ffplay_command(ffplay, url)
             .spawn()
             .context("failed to start ffplay probe")?;
@@ -498,8 +495,8 @@ mod tests {
     /// Connection-drop probe: with the reconnect flags, ffplay must stay up
     /// and pull a fresh connection from the fixture server instead of sitting
     /// silent after a drop.
-    #[tokio::test]
-    async fn ffplay_reconnects_when_the_stream_connection_drops() {
+    #[test]
+    fn ffplay_reconnects_when_the_stream_connection_drops() {
         if !playback_tests_enabled() {
             eprintln!("skipping: set LUM_RADIO_PLAYBACK_TESTS=1 to run");
             return;
@@ -517,9 +514,8 @@ mod tests {
             stop.clone(),
             accepts.clone(),
         );
-        let player = spawn_probe_ffplay(&format!("http://{addr}/stream.mp3"))
-            .await
-            .expect("ffplay probe spawn");
+        let player =
+            spawn_probe_ffplay(&format!("http://{addr}/stream.mp3")).expect("ffplay probe spawn");
         // Each connection feeds ~6s of audio, so by +20s at least one
         // transparent reconnect must have pulled a second connection.
         let deadline = Instant::now() + Duration::from_secs(20);
@@ -543,8 +539,8 @@ mod tests {
     /// Stream-stall probe: the server holds connections open without sending,
     /// so the read timeout must fire and drive a reconnect to a fresh
     /// connection instead of leaving ffplay silent forever.
-    #[tokio::test]
-    async fn ffplay_reconnects_when_the_stream_stalls() {
+    #[test]
+    fn ffplay_reconnects_when_the_stream_stalls() {
         if !playback_tests_enabled() {
             eprintln!("skipping: set LUM_RADIO_PLAYBACK_TESTS=1 to run");
             return;
@@ -562,9 +558,8 @@ mod tests {
             stop.clone(),
             accepts.clone(),
         );
-        let player = spawn_probe_ffplay(&format!("http://{addr}/stream.mp3"))
-            .await
-            .expect("ffplay probe spawn");
+        let player =
+            spawn_probe_ffplay(&format!("http://{addr}/stream.mp3")).expect("ffplay probe spawn");
         // ~6s of buffered audio, then a 15s read timeout before the first
         // reconnect: look for the second connection by +30s.
         let deadline = Instant::now() + Duration::from_secs(30);

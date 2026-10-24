@@ -17,15 +17,36 @@ pub(crate) struct GitHubAsset {
     pub browser_download_url: String,
 }
 
+/// Shared HTTP agent: connection and read-stall timeouts, no cap on total
+/// transfer time so large archives can finish on slow links.
+pub(crate) fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .user_agent(format!("lum/{}", env!("CARGO_PKG_VERSION")))
+        .timeout_connect(Some(Duration::from_secs(30)))
+        .timeout_per_read(Some(Duration::from_secs(60)))
+        .build()
+        .into()
+}
+
 pub(crate) fn latest_release(owner: &str, repo: &str) -> Result<GitHubRelease> {
     let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .user_agent("lum-tools/1.0")
-        .build()?;
-    let text = client.get(&url).send()?.error_for_status()?.text()?;
-    serde_json::from_str(&text)
+    agent()
+        .get(&url)
+        .call()
+        .with_context(|| format!("failed to query GitHub API for {owner}/{repo}"))?
+        .body_mut()
+        .read_json()
         .with_context(|| format!("failed to parse GitHub release for {owner}/{repo}"))
+}
+
+impl GitHubRelease {
+    pub(crate) fn asset_url(&self, name: &str) -> Result<&str> {
+        self.assets
+            .iter()
+            .find(|asset| asset.name == name)
+            .map(|asset| asset.browser_download_url.as_str())
+            .with_context(|| format!("GitHub release missing asset '{name}'"))
+    }
 }
 
 /// Download "url" to "dest". A url that names an existing local file is copied
@@ -36,16 +57,27 @@ pub(crate) fn download_asset(url: &str, dest: &Path) -> Result<()> {
         fs::copy(path, dest)?;
         return Ok(());
     }
-    let mut response = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(600))
-        .user_agent("lum-tools/1.0")
-        .build()?
-        .get(url)
-        .send()?
-        .error_for_status()?;
+    let mut reader = open(url)?;
     let mut out = fs::File::create(dest)?;
-    io::copy(&mut response, &mut out)?;
+    io::copy(&mut reader, &mut out).with_context(|| format!("failed to download {url}"))?;
     Ok(())
+}
+
+/// Download "url" into memory, without ureq's default body size limit.
+pub(crate) fn download_bytes(url: &str) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    io::Read::read_to_end(&mut open(url)?, &mut bytes)
+        .with_context(|| format!("failed to download {url}"))?;
+    Ok(bytes)
+}
+
+fn open(url: &str) -> Result<ureq::BodyReader<'static>> {
+    Ok(agent()
+        .get(url)
+        .call()
+        .with_context(|| format!("failed to download {url}"))?
+        .into_body()
+        .into_reader())
 }
 
 pub(crate) fn sha256_file(path: &Path) -> Result<String> {

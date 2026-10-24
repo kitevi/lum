@@ -11,8 +11,8 @@ use anyhow::{Context, Result};
 use crate::cli::YtCommand;
 use crate::ffmpeg;
 
-pub async fn run(command: YtCommand) -> Result<()> {
-    let yt_dlp = deps::resolve_yt_dlp().await?;
+pub fn run(command: YtCommand) -> Result<()> {
+    let yt_dlp = deps::resolve_yt_dlp()?;
 
     match command {
         YtCommand::Aud { urls } => {
@@ -21,7 +21,7 @@ pub async fn run(command: YtCommand) -> Result<()> {
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
         YtCommand::Vid { height, urls } => {
-            check_ffmpeg().await?;
+            check_ffmpeg()?;
             let args = args::video_args(height);
             let dest_dir = output_dirs::video_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
@@ -59,8 +59,8 @@ pub async fn run(command: YtCommand) -> Result<()> {
     }
 }
 
-async fn check_ffmpeg() -> Result<()> {
-    ffmpeg::resolve().await.map(|_| ()).map_err(|error| {
+fn check_ffmpeg() -> Result<()> {
+    ffmpeg::resolve().map(|_| ()).map_err(|error| {
         anyhow::anyhow!(
             "ffmpeg is not available: {error}\n\nInstall it manually or let lum auto-provision it on Linux/Windows."
         )
