@@ -47,6 +47,8 @@ Radio playback uses the existing ffmpeg dependency path:
 - `-autoexit` so the supervisor can observe the end of an attempt and decide to respawn.
 - `-rw_timeout 15000000` so a connection that delivers no data for 15 seconds errors out instead of blocking forever.
 - Live stations additionally get `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`, which heals dropped and stalled connections in-process without leaving silence.
+- Live stations also get `-infbuf -af adelay=delays=5000:all=1` (see ADR-0020): 5s of leading silence while an uncapped input queue fills, so streams that arrive at exactly realtime (the RadCap hosts) can jitter without audible gaps.
+- ffplay runs at `-loglevel warning`, and the runner forwards its stderr to `lum.log` as `warn` events. Healthy streams log nothing.
 
 `ffplay` is preferred from `$PATH`. If it is not on `$PATH`, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary.
 
@@ -71,7 +73,7 @@ Controls are process-backed, not terminal-key backed:
 - Direct and YouTube stations remember the supervisor runner process; `stop` kills the runner tree (runner plus its ffplay child) and clears state.
 - `status` reports `playing` while the remembered runner process is alive, meaning it is actively playing or retrying with backoff.
 - After 5 consecutive short-lived playback attempts (a session shorter than 60 seconds resets the streak), the runner gives up, sends a desktop notification, logs the failure, and exits; the next `status` then reports `stopped`. Failed yt-dlp resolutions count as failed attempts and back off like any other failure.
-- Runner diagnostics (attempt failures, respawn decisions) go to the rotating `lum.log` in lum's log directory, not the terminal, because the runner runs detached with nulled stdio.
+- Runner diagnostics (attempt failures, respawn decisions, ffplay warnings) go to the rotating `lum.log` in lum's log directory, not the terminal, because the runner runs detached with nulled stdio.
 - Starting a new station stops the remembered process and starts the new station.
 - Playlist stations keep the pre-existing runner semantics.
 

@@ -1,5 +1,6 @@
 use std::{
     ffi::OsStr,
+    io::{BufRead, BufReader},
     path::Path,
     process::{Command, Stdio},
 };
@@ -74,9 +75,22 @@ impl ExternalPlayer {
     ) -> Result<()> {
         let ffplay = ffmpeg::resolve_ffplay()?;
         let ffplay = ffplay.to_string_lossy().into_owned();
-        let status = build_command(ffplay, &url)
-            .status()
+        let mut child = build_command(ffplay, &url)
+            .stderr(Stdio::piped())
+            .spawn()
             .context("failed to start ffplay")?;
+        // The runner is detached with nulled stdio, so ffplay's warnings
+        // (reconnects, decode errors) only survive in the rotating log.
+        if let Some(stderr) = child.stderr.take() {
+            for line in BufReader::new(stderr).split(b'\n').map_while(Result::ok) {
+                let line = String::from_utf8_lossy(&line);
+                let line = line.trim();
+                if !line.is_empty() {
+                    tracing::warn!(url = %url, "ffplay: {line}");
+                }
+            }
+        }
+        let status = child.wait().context("failed to wait for ffplay")?;
         if !status.success() {
             bail!("ffplay exited with code {:?}", status.code());
         }
@@ -89,7 +103,10 @@ pub(super) fn ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> 
 }
 
 /// ffplay command for live streams: adds transparent reconnect behavior so
-/// dropped or stalled connections heal in-process without leaving silence.
+/// dropped or stalled connections heal in-process without leaving silence,
+/// and a startup cushion (see ADR-0020): `-infbuf` lifts ffplay's ~1s input
+/// queue cap and the initial `adelay` lets that queue fill while silence
+/// plays, so servers that send at exactly realtime can jitter without gaps.
 /// Only used for live stations; playlist playback must see track EOF to
 /// advance, so it uses the base command.
 fn live_stream_ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> Command {
@@ -103,6 +120,9 @@ fn live_stream_ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) ->
             "1",
             "-reconnect_delay_max",
             "5",
+            "-infbuf",
+            "-af",
+            "adelay=delays=5000:all=1",
         ],
     )
 }
@@ -117,7 +137,7 @@ fn ffplay_command_with(
         "-nodisp",
         "-hide_banner",
         "-loglevel",
-        "error",
+        "warning",
         // Exit at end of stream so a supervisor can decide to respawn.
         "-autoexit",
         // Give up on a connection that delivers no data for 15s instead of
@@ -408,7 +428,7 @@ mod tests {
                 "-nodisp",
                 "-hide_banner",
                 "-loglevel",
-                "error",
+                "warning",
                 "-autoexit",
                 "-rw_timeout",
                 "15000000",
@@ -431,7 +451,7 @@ mod tests {
                 "-nodisp",
                 "-hide_banner",
                 "-loglevel",
-                "error",
+                "warning",
                 "-autoexit",
                 "-rw_timeout",
                 "15000000",
@@ -441,6 +461,9 @@ mod tests {
                 "1",
                 "-reconnect_delay_max",
                 "5",
+                "-infbuf",
+                "-af",
+                "adelay=delays=5000:all=1",
                 "https://example.test/live"
             ]
         );
