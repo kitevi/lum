@@ -1,12 +1,13 @@
 # lum
 
-`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and macOS apps, listening to internet radio stations or letting lum pick a random one, checking local Git repositories, and managing folder-based Git identities.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools, macOS apps, and VS Code extensions, listening to internet radio stations or letting lum pick a random one, checking local Git repositories, and managing folder-based Git identities.
 
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
 - `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
 - `lum apps` — install and update macOS apps like OpenEmu that Homebrew disabled (macOS only).
+- `lum vsix` — install and update VS Code extensions that only ship as `.vsix` files on GitHub releases.
 - `lum radio rand` — play a random built-in station, skipping the remembered station.
 
 ## Install
@@ -222,6 +223,37 @@ Notes:
 - OpenEmu is currently an Intel-only build; on Apple Silicon lum prints the one-time Rosetta 2 install command after installing.
 
 Pair `lum apps` with `lum backup openemu` to also back up emulator save states and configs.
+
+## VS Code extensions
+
+`lum vsix` installs and updates VS Code extensions that are only published as `.vsix` files on GitHub releases, so the editor never auto-updates them. It works with VS Code, Cursor, and VSCodium (`--editor code|cursor|codium`; default: the first one found) on Linux, macOS, and Windows.
+
+Available extensions:
+
+| Extension | ID | Requires |
+| --- | --- | --- |
+| `lathe` | `ag-libs.lathe` | Java 17+ |
+
+Common commands:
+
+```sh
+lum vsix ls
+lum vsix install lathe
+lum vsix install lathe --editor cursor
+lum vsix status lathe
+lum vsix version lathe
+lum vsix update lathe
+lum vsix sync
+lum vsix sync --dry-run
+```
+
+Notes:
+
+- If a requirement is missing (for lathe: no Java via `$LATHE_JAVA_HOME`, `$JAVA_HOME`, or `PATH`), lum stops before downloading anything; `sync` skips the extension instead.
+- Downloads are verified against the SHA-256 that GitHub publishes for each release asset.
+- If Red Hat's Java extension (`redhat.java`) is installed, lum reminds you to disable it in Lathe workspaces.
+
+See `src/vsix/README.md` for the exact rules.
 
 ## Other commands
 

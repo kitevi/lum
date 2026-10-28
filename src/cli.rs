@@ -72,6 +72,11 @@ pub enum Commands {
         #[usage(subcommand)]
         command: AppsCommand,
     },
+    /// Manage VS Code extensions installed from GitHub release .vsix files.
+    Vsix {
+        #[usage(subcommand)]
+        command: VsixCommand,
+    },
     /// Download audio, video, or albums from YouTube using yt-dlp.
     Yt {
         #[usage(subcommand)]
@@ -222,6 +227,65 @@ pub enum AppsCommand {
     Version { app: String },
 }
 
+/// VS Code-compatible editors whose CLI `lum vsix` drives.
+#[derive(Debug, Clone, Copy, usage::ValueEnum)]
+pub enum VsixEditor {
+    Code,
+    Cursor,
+    Codium,
+}
+
+#[derive(Debug, usage::Subcommands)]
+pub enum VsixCommand {
+    /// Install a managed extension from its latest GitHub release.
+    Install {
+        extension: String,
+        /// Editor CLI to install into (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+        #[usage(long)]
+        force: bool,
+    },
+    /// List managed extensions and their installed versions.
+    #[usage(visible_alias = "ls")]
+    List {
+        /// Editor CLI to inspect (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+    },
+    /// Show detailed status for one managed extension.
+    Status {
+        extension: String,
+        /// Editor CLI to inspect (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+    },
+    /// Update one managed extension.
+    Update {
+        extension: String,
+        /// Editor CLI to update in (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+        #[usage(long)]
+        force: bool,
+    },
+    /// Install missing extensions and update outdated ones.
+    Sync {
+        /// Editor CLI to sync (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+        #[usage(long)]
+        dry_run: bool,
+    },
+    /// Show installed and latest version for one extension.
+    Version {
+        extension: String,
+        /// Editor CLI to inspect (default: first of code, cursor, codium found).
+        #[usage(long, value_enum)]
+        editor: Option<VsixEditor>,
+    },
+}
+
 #[derive(Debug, usage::Subcommands)]
 pub enum ReposCommand {
     /// Scan a directory tree for Git repositories and report branch and sync status.
@@ -364,6 +428,7 @@ mod tests {
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Apps { .. }
+            | Commands::Vsix { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
             | Commands::Yt { .. }
@@ -387,6 +452,7 @@ mod tests {
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
             | Commands::Apps { .. }
+            | Commands::Vsix { .. }
             | Commands::Repos { .. }
             | Commands::GitId { .. }
             | Commands::Yt { .. }
@@ -404,6 +470,37 @@ mod tests {
             cli.command,
             Commands::Apps {
                 command: AppsCommand::List
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_vsix_install_with_editor() {
+        let cli = parse(&["vsix", "install", "lathe", "--editor", "cursor", "--force"]);
+        match cli.command {
+            Commands::Vsix {
+                command:
+                    VsixCommand::Install {
+                        extension,
+                        editor,
+                        force,
+                    },
+            } => {
+                assert_eq!(extension, "lathe");
+                assert!(matches!(editor, Some(VsixEditor::Cursor)));
+                assert!(force);
+            }
+            _ => panic!("expected vsix install command"),
+        }
+    }
+
+    #[test]
+    fn parses_vsix_ls_without_editor() {
+        let cli = parse(&["vsix", "ls"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Vsix {
+                command: VsixCommand::List { editor: None }
             }
         ));
     }

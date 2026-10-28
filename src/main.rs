@@ -14,6 +14,7 @@ mod radio;
 mod repos;
 mod tools;
 mod vol;
+mod vsix;
 mod yt;
 
 use anyhow::Result;
@@ -57,6 +58,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::GitId { command } => git_id::run(command),
         Commands::Tools { command } => tools::run(command),
         Commands::Apps { command } => apps::run(command),
+        Commands::Vsix { command } => vsix::run(command),
         Commands::Yt { command } => yt::run(command),
         Commands::Font { command } => font::run(command),
         Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
