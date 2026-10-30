@@ -15,9 +15,6 @@ pub(crate) struct GitHubRelease {
 pub(crate) struct GitHubAsset {
     pub name: String,
     pub browser_download_url: String,
-    /// Asset digest such as `sha256:<hex>`; absent on older releases.
-    #[serde(default)]
-    pub digest: Option<String>,
 }
 
 /// Shared HTTP agent: connection and read-stall timeouts, no cap on total

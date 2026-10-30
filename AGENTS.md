@@ -12,7 +12,6 @@
 Before changing a subsystem, read its local README:
 
 - `src/radio/README.md` for the `lum radio` subcommand.
-- `src/vsix/README.md` for the `lum vsix` subcommand.
 - `xtask/README.md` for repository maintenance tasks and local installation.
 
 Keep `AGENTS.md` policy-level. Put subsystem implementation details in the subsystem README and durable trade-off decisions in ADRs under `docs/adr/`.
