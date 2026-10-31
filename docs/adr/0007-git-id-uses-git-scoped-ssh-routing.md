@@ -10,4 +10,4 @@ Lum git-id routes folder-specific authentication through Git `includeIf` section
 
 ## Consequences
 
-Direct SSH commands such as `ssh -T git@github.com` are not folder-aware and use the default domain identity. Folder-specific identity selection applies to Git operations in managed folders.
+Direct SSH commands such as `ssh -T git@github.com` are not folder-aware. They originally used a default domain identity, which ADR-0021 removed. Folder-specific identity selection applies to Git operations in managed folders.

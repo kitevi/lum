@@ -12,6 +12,7 @@
 Before changing a subsystem, read its local README:
 
 - `src/radio/README.md` for the `lum radio` subcommand.
+- `src/git_id/README.md` for the `lum git-id` subcommand.
 - `xtask/README.md` for repository maintenance tasks and local installation.
 
 Keep `AGENTS.md` policy-level. Put subsystem implementation details in the subsystem README and durable trade-off decisions in ADRs under `docs/adr/`.

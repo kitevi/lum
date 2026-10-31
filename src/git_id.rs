@@ -12,13 +12,18 @@ mod credential;
 use crate::paths::expand_path;
 use artifacts::{
     cleanup_old_backups, cleanup_orphan_identity_configs, cleanup_orphan_key_pairs,
-    is_lum_managed_file, replace_marked_section,
+    has_settings_after_section, is_lum_managed_file, read_optional, remove_marked_section,
+    replace_marked_section,
 };
 pub use config::config_path;
 use config::{
-    Authentication, Identity, allowed_signers_path, data_dir, detect_identity, git_path,
-    identity_git_config_path, identity_private_key_path, identity_public_key_path, load_config,
+    Authentication, Identity, allowed_signers_path, data_dir, detect_identity,
+    folder_nesting_warnings, git_path, identity_git_config_path, identity_private_key_path,
+    identity_public_key_path, load_config,
 };
+
+const SECTION_BEGIN: &str = "# lum:git-id:begin";
+const SECTION_END: &str = "# lum:git-id:end";
 
 pub fn run_credential_helper(route_id: &str, operation: &str) -> Result<()> {
     credential::run(route_id, operation)
@@ -66,8 +71,35 @@ fn init() -> Result<()> {
 fn where_am_i() -> Result<()> {
     let identities = load_config()?;
     let cwd = std::env::current_dir()?;
-    let identity = detect_identity(&identities, &cwd)
-        .ok_or_else(|| anyhow::anyhow!("no git identity detected for {}", cwd.display()))?;
+    let expected = detect_identity(&identities, &cwd);
+    let undetected = || anyhow::anyhow!("no git identity detected for {}", cwd.display());
+    let identity = match git_email_origin() {
+        None => {
+            let identity = expected.ok_or_else(undetected)?;
+            eprintln!(
+                "Not in a Git repository; showing the identity for repositories created here."
+            );
+            identity
+        }
+        Some(origin) => {
+            let active = origin
+                .as_deref()
+                .and_then(identity_name_from_origin)
+                .and_then(|name| identities.iter().find(|identity| identity.name == name));
+            match (active, expected, origin) {
+                (Some(identity), _, _) => identity,
+                (None, None, _) => return Err(undetected()),
+                (None, Some(expected), Some(origin)) => anyhow::bail!(
+                    "Git is not using identity {} here: user.email comes from {origin}. Settings in the repository or after lum's section in ~/.gitconfig take precedence; lum git-id sync moves that section back to the end",
+                    expected.name
+                ),
+                (None, Some(expected), None) => anyhow::bail!(
+                    "Git is not using identity {} here. Run lum git-id sync if you have not; otherwise this is a linked worktree of a repository outside the managed folder, and Git goes by the location of the .git directory",
+                    expected.name
+                ),
+            }
+        }
+    };
     println!("Identity: {}", identity.name);
     println!("Author:   {}", identity.author_name);
     println!("Email:    {}", identity.email);
@@ -75,29 +107,69 @@ fn where_am_i() -> Result<()> {
     Ok(())
 }
 
+/// Where Git gets `user.email` in the current directory. The outer `None` means this is
+/// not a repository or Git is unavailable; the inner `None` means `user.email` is unset.
+fn git_email_origin() -> Option<Option<String>> {
+    let in_repository = std::process::Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !in_repository {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .args(["config", "--null", "--show-origin", "--get", "user.email"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return Some(None);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Some(stdout.split('\0').next().map(str::to_owned))
+}
+
+fn identity_name_from_origin(origin: &str) -> Option<&str> {
+    std::path::Path::new(origin.strip_prefix("file:")?)
+        .file_name()?
+        .to_str()?
+        .strip_prefix(".gitconfig-lum-git-id-")
+}
+
 fn sync() -> Result<()> {
     let path = config_path()?;
     crate::private_file::harden(&path)?;
     let identities = load_config()?;
+    for warning in folder_nesting_warnings(&identities) {
+        eprintln!("warning: {warning}");
+    }
     ensure_ssh_keygen_on_path()?;
     cleanup_old_backups()?;
 
-    let mut failures = Vec::new();
+    let mut synced = Vec::new();
     for identity in &identities {
-        if let Err(error) = sync_identity(identity) {
-            failures.push(format!("{}: {error:#}", identity.name));
-            eprintln!("{}: {error:#}", identity.name);
+        match sync_identity(identity) {
+            Ok(()) => synced.push(identity),
+            Err(error) => eprintln!("{}: {error:#}", identity.name),
         }
     }
 
-    write_global_git_config(&identities)?;
-    write_ssh_config(&identities)?;
-    write_allowed_signers(&identities)?;
+    write_global_git_config(&synced)?;
+    // Older versions wrote a Host block here; see ADR 0021.
+    let ssh_config = crate::paths::home_path(".ssh/config")?;
+    if let Some(removed) = remove_marked_section(&ssh_config, SECTION_BEGIN, SECTION_END)? {
+        println!(
+            "Removed lum's Host section from {}. SSH outside managed folders now uses your own settings. To keep using these keys there, add this to the file yourself:\n\n{}\n",
+            ssh_config.display(),
+            removed.trim_end()
+        );
+    }
+    write_allowed_signers(&synced)?;
     cleanup_orphan_identity_configs(&identities, identity_git_config_path)?;
     cleanup_orphan_key_pairs(&identities)?;
 
-    if !failures.is_empty() {
-        anyhow::bail!("{} git identity sync failure(s)", failures.len());
+    let failures = identities.len() - synced.len();
+    if failures > 0 {
+        anyhow::bail!("{failures} git identity sync failure(s)");
     }
     Ok(())
 }
@@ -176,18 +248,33 @@ fn write_identity_git_config(identity: &Identity) -> Result<()> {
             path.display()
         );
     }
+    std::fs::write(path, identity_git_config(identity)?)?;
+    Ok(())
+}
+
+fn identity_git_config(identity: &Identity) -> Result<String> {
     let public_key = git_path(&identity_public_key_path(identity)?);
     let allowed_signers = git_path(&allowed_signers_path()?);
     let mut content = format!(
         "# lum:git-id:managed identity={}\n\n[user]\n  name = {}\n  email = {}\n  signingkey = {}\n\n[commit]\n  gpgsign = true\n\n[gpg]\n  format = ssh\n\n[gpg \"ssh\"]\n  allowedSignersFile = {}\n",
-        identity.name, identity.author_name, identity.email, public_key, allowed_signers,
+        identity.name,
+        credential::git_config_value(&identity.author_name),
+        credential::git_config_value(&identity.email),
+        credential::git_config_value(&public_key),
+        credential::git_config_value(&allowed_signers),
     );
     match &identity.authentication {
         Authentication::Ssh => {
             let private_key = git_path(&identity_private_key_path(identity)?);
+            let ssh_command = format!(
+                "ssh -i {} -o IdentitiesOnly=yes",
+                credential::shell_quote(&private_key)
+            );
             content.push_str(&format!(
-                "\n[core]\n  sshCommand = \"ssh -i {} -o IdentitiesOnly=yes\"\n\n[url \"ssh://git@{}/\"]\n  insteadOf = https://{}/\n",
-                private_key, identity.domain, identity.domain
+                "\n[core]\n  sshCommand = {}\n\n[url \"ssh://git@{}/\"]\n  insteadOf = https://{}/\n",
+                credential::git_config_value(&ssh_command),
+                identity.domain,
+                identity.domain
             ));
         }
         Authentication::HttpBasic {
@@ -201,14 +288,14 @@ fn write_identity_git_config(identity: &Identity) -> Result<()> {
             ));
         }
     }
-    std::fs::write(path, content)?;
-    Ok(())
+    Ok(content)
 }
 
-fn write_global_git_config(identities: &[Identity]) -> Result<()> {
+fn write_global_git_config(identities: &[&Identity]) -> Result<()> {
     let path = crate::paths::home_path(".gitconfig")?;
     let mut entries: Vec<_> = identities
         .iter()
+        .copied()
         .flat_map(|identity| {
             identity
                 .folders
@@ -222,64 +309,39 @@ fn write_global_git_config(identities: &[Identity]) -> Result<()> {
             .count()
     });
 
-    let mut section = String::from("# lum:git-id:begin\n");
+    let mut section = format!("{SECTION_BEGIN}\n");
     for (identity, folder) in entries {
-        let expanded = expand_path(folder);
-        let resolved = dunce::canonicalize(&expanded).unwrap_or(expanded);
-        let folder_path = if cfg!(windows) {
-            git_path(&resolved)
-        } else {
-            resolved.to_string_lossy().into_owned()
-        };
-        let mut folder_path = globset::escape(&folder_path.replace('\\', r"\\"));
-        if folder_path.contains('\n') {
-            anyhow::bail!("managed folder path contains a newline: {resolved:?}");
-        }
-        if !folder_path.ends_with('/') {
-            folder_path.push('/');
-        }
-        let folder_path = folder_path.replace('\\', "\\\\").replace('"', "\\\"");
-        section.push_str(&format!(
-            "[includeIf \"gitdir:{}\"]\n  path = {}\n\n",
-            folder_path,
-            git_path(&identity_git_config_path(identity)?)
-        ));
+        section.push_str(&include_entry(identity, folder)?);
     }
-    section.push_str("# lum:git-id:end\n");
-    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
+    section.push_str(&format!("{SECTION_END}\n"));
+    replace_marked_section(&path, SECTION_BEGIN, SECTION_END, &section)
 }
 
-fn write_ssh_config(identities: &[Identity]) -> Result<()> {
-    let path = crate::paths::home_path(".ssh/config")?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+fn include_entry(identity: &Identity, folder: &str) -> Result<String> {
+    let expanded = expand_path(folder);
+    let resolved = dunce::canonicalize(&expanded).unwrap_or(expanded);
+    let mut folder_path = globset::escape(&git_path(&resolved).replace('\\', r"\\"));
+    if folder_path.contains('\n') {
+        anyhow::bail!("managed folder path contains a newline: {resolved:?}");
     }
-    let mut seen = std::collections::HashSet::new();
-    let mut section = String::from("# lum:git-id:begin\n");
-    for identity in identities {
-        if !matches!(&identity.authentication, Authentication::Ssh) {
-            continue;
-        }
-        if seen.insert(identity.domain.clone()) {
-            section.push_str(&format!(
-                "Host {}\n  HostName {}\n  User git\n  IdentityFile {}\n  IdentitiesOnly yes\n\n",
-                identity.domain,
-                identity.domain,
-                git_path(&identity_private_key_path(identity)?)
-            ));
-        }
+    if !folder_path.ends_with('/') {
+        folder_path.push('/');
     }
-    section.push_str("# lum:git-id:end\n");
-    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
+    let folder_path = folder_path.replace('\\', "\\\\").replace('"', "\\\"");
+    Ok(format!(
+        "[includeIf \"gitdir:{}\"]\n  path = {}\n\n",
+        folder_path,
+        credential::git_config_value(&git_path(&identity_git_config_path(identity)?))
+    ))
 }
 
-fn write_allowed_signers(identities: &[Identity]) -> Result<()> {
+fn write_allowed_signers(identities: &[&Identity]) -> Result<()> {
     let path = allowed_signers_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut section = String::from("# lum:git-id:begin\n");
-    for identity in identities {
+    let mut section = format!("{SECTION_BEGIN}\n");
+    for identity in identities.iter().copied() {
         let public_key = identity_public_key_path(identity)?;
         if let Ok(content) = std::fs::read_to_string(public_key) {
             let fields: Vec<_> = content.split_whitespace().collect();
@@ -288,17 +350,40 @@ fn write_allowed_signers(identities: &[Identity]) -> Result<()> {
             }
         }
     }
-    section.push_str("# lum:git-id:end\n");
-    replace_marked_section(&path, "# lum:git-id:begin", "# lum:git-id:end", &section)
+    section.push_str(&format!("{SECTION_END}\n"));
+    replace_marked_section(&path, SECTION_BEGIN, SECTION_END, &section)
 }
 
 fn status() -> Result<()> {
+    let global = read_optional(&crate::paths::home_path(".gitconfig")?)?;
     for identity in load_config()? {
-        let key = identity_public_key_path(&identity)?;
-        let status = if key.exists() { "active" } else { "needs sync" };
-        println!("{}  {}", identity.name, status);
+        match identity_sync_problem(&identity, &global)? {
+            None => println!("{}  active", identity.name),
+            Some(problem) => println!("{}  needs sync ({problem})", identity.name),
+        }
     }
     Ok(())
+}
+
+/// Compares an identity's artifacts with what sync would write.
+fn identity_sync_problem(identity: &Identity, global: &str) -> Result<Option<&'static str>> {
+    if !identity_private_key_path(identity)?.exists()
+        || !identity_public_key_path(identity)?.exists()
+    {
+        return Ok(Some("key missing"));
+    }
+    if read_optional(&identity_git_config_path(identity)?)? != identity_git_config(identity)? {
+        return Ok(Some("git config out of date"));
+    }
+    for folder in &identity.folders {
+        if !global.contains(&include_entry(identity, folder)?) {
+            return Ok(Some("folder not routed in ~/.gitconfig"));
+        }
+    }
+    if has_settings_after_section(global, SECTION_END) {
+        return Ok(Some("~/.gitconfig has settings after lum's section"));
+    }
+    Ok(None)
 }
 
 fn info(name: &str) -> Result<()> {
@@ -366,13 +451,6 @@ fn paths() -> Result<()> {
         crate::paths::home_dir()
             .unwrap_or_default()
             .join(".gitconfig")
-            .display()
-    );
-    println!(
-        "  {}",
-        crate::paths::home_dir()
-            .unwrap_or_default()
-            .join(".ssh/config")
             .display()
     );
     println!(

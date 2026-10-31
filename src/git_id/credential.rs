@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
 
-use super::config::{Authentication, load_config};
+use super::config::{Authentication, load_credential_identities};
 
 pub fn run(route_id: &str, operation: &str) -> Result<()> {
     let config_path = super::config::config_path()
@@ -36,7 +36,7 @@ fn resolve(
     route_id: &str,
     mut request: gix_credentials::protocol::Context,
 ) -> std::io::Result<Option<gix_credentials::protocol::Context>> {
-    let identities = load_config().map_err(|_| credential_unavailable())?;
+    let identities = load_credential_identities().map_err(|_| credential_unavailable())?;
     let identity = identities
         .iter()
         .find(|identity| self::route_id(&identity.name) == route_id)
@@ -116,7 +116,7 @@ pub fn route_id(identity_name: &str) -> String {
     route
 }
 
-fn shell_quote(value: &str) -> String {
+pub fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r#"'\''"#))
 }
 
