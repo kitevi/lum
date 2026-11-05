@@ -54,7 +54,6 @@ Current aliases:
 | coralbricks | CORALBRICKS_API_KEY |
 | deepseek | DEEPSEEK_API_KEY |
 | exa | EXA_API_KEY |
-| hypercharm | HYPERCHARM_API_KEY |
 | opencode | OPENCODE_API_KEY |
 | opendesign | OPENDESIGN_API_KEY |
 | openrouter | OPENROUTER_API_KEY |

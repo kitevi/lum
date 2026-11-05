@@ -170,7 +170,7 @@ fn env_list_orders_set_aliases_before_unset() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["env", "set", "hypercharm", "hc-test"])
+        .args(["env", "set", "coralbricks", "cb-test"])
         .assert()
         .success();
 
@@ -185,11 +185,13 @@ fn env_list_orders_set_aliases_before_unset() {
     )
     .unwrap();
 
-    let hypercharm = stdout.find("hypercharm ").expect("hypercharm row printed");
+    let coralbricks = stdout
+        .find("coralbricks ")
+        .expect("coralbricks row printed");
     let deepseek = stdout.find("deepseek").expect("unset deepseek row printed");
     assert!(
-        hypercharm < deepseek,
-        "set alias 'hypercharm' should print before unset 'deepseek':\n{stdout}"
+        coralbricks < deepseek,
+        "set alias 'coralbricks' should print before unset 'deepseek':\n{stdout}"
     );
 }
 
@@ -279,20 +281,20 @@ fn env_set_and_unset_can_emit_fish_statements() {
 }
 
 #[test]
-fn env_set_hypercharm_emits_export_and_init_replays() {
+fn env_set_coralbricks_emits_export_and_init_replays() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["env", "set", "hypercharm", "hc-test"])
+        .args(["env", "set", "coralbricks", "cb-test"])
         .assert()
         .success()
-        .stdout("export HYPERCHARM_API_KEY='hc-test'\n");
+        .stdout("export CORALBRICKS_API_KEY='cb-test'\n");
 
     lum_with_env(&home)
         .args(["env", "init"])
         .assert()
         .success()
         .stdout(predicates::str::contains(
-            "export HYPERCHARM_API_KEY='hc-test'",
+            "export CORALBRICKS_API_KEY='cb-test'",
         ));
 }
