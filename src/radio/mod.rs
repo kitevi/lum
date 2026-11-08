@@ -143,10 +143,10 @@ fn play(station: Station) -> Result<()> {
         pid: player.pid,
         start_time: player.start_time,
         code: station.code.to_string(),
-        description: station.description.to_string(),
+        description: station.name.to_string(),
         process_kind,
     })?;
-    println!("playing {} {}", station.code, station.description);
+    println!("playing {} {}", station.code, station.name);
     Ok(())
 }
 
@@ -318,7 +318,7 @@ fn run_station_stream_loop(station: Station) -> Result<()> {
             Retry::GiveUp => {
                 let message = format!(
                     "lum radio: {} stopped after {MAX_CONSECUTIVE_FAILURES} failed stream attempts",
-                    station.description
+                    station.name
                 );
                 tracing::error!(station = %station.code, "{message}");
                 notify_stream_lost(&message);
@@ -427,7 +427,6 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
-    use crate::radio::stations::Genre;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -513,7 +512,6 @@ mod tests {
         let message = error.to_string();
 
         assert!(message.starts_with("station not found: nope"));
-        assert!(message.contains("Electroacoustic and concrète"));
         assert!(message.contains("conc  RadCap Musique Concrète"));
         assert!(message.contains("rand  Play a random built-in station"));
     }
@@ -717,10 +715,10 @@ mod tests {
         let url: &'static str = Box::leak(format!("http://{addr}/stream.mp3").into_boxed_str());
         let station = Station {
             code: "fx404",
-            description: "fixture 404 station",
+            name: "fixture 404 station",
             url,
             kind: StationKind::Direct,
-            genre: Genre::Drone,
+            tags: &[],
         };
         let runner = std::thread::spawn(move || run_station_stream_loop(station));
         // The first attempt fails fast; after the 2s backoff the runner must

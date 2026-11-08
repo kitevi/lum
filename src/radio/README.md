@@ -4,22 +4,20 @@
 
 ## CLI Shape
 
-- `lum radio` lists built-in stations grouped by genre.
-- `lum radio list` explicitly lists built-in stations grouped by genre.
+- `lum radio` lists built-in stations one row per station.
+- `lum radio list` explicitly lists built-in stations one row per station.
 - `lum radio <code>` starts a station in the background, replacing any current station.
 - `lum radio rand` starts a random built-in station, skipping the current one.
 - `lum radio status` prints the remembered playback state.
 - `lum radio stop` stops playback.
 - Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
-- Listings keep the plain output style, with each `code  description` row indented under its genre heading.
+- Listings are one aligned row per station: `code  name  tag, tag`.
 
 ## Station Catalog
 
-Each entry in `stations.rs` carries a code, a standalone description, a stream URL, a kind, and a genre. The genre is catalog data, not a display convention: `format_listing` groups every non-empty genre under its label in this order:
+Each entry in `stations.rs` carries a code, a standalone name, a stream URL, a kind, and a list of tags. Tags (genre, mood, `live`, `playlist`) replace the old genre grouping and long descriptions to keep the listing compact; every station needs at least one.
 
-Electroacoustic and concrète, Experimental and avant-garde, Minimal and reductionist, Drone, Dark ambient, Space and ambient, Field recordings, Experimental electronic, World, Lo-fi.
-
-Descriptions must stand alone because `playing` and `status` print only the code and description. Retiring a station needs no state migration: `status` prints the remembered description, and `rand` excludes a remembered code whether or not it is still in the catalog.
+Names must stand alone because `playing` and `status` print only the code and name. Retiring a station needs no state migration: `status` prints the remembered name, and `rand` excludes a remembered code whether or not it is still in the catalog.
 
 The RadCap entries use raw IP URLs, so they are the catalog entries most likely to stop working when a host moves. Check them before assuming a playback failure is local.
 
@@ -30,7 +28,7 @@ The RadCap entries use raw IP URLs, so they are the catalog entries most likely 
 - The pool is every station in `stations::all()`, drawn uniformly. Station kind is ignored, so YouTube and playlist stations are eligible.
 - The station remembered in `radio-player.json` is excluded by code, whether or not its process is still alive. Resolution reads that state before playback is stopped, so a failed draw leaves the current station alone.
 - If exclusion would empty the pool, resolution fails rather than replaying the current station.
-- `lum radio list` prints the genre-grouped station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
+- `lum radio list` prints the station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
 - The selector arm is matched before the station catch-all, so the selector always wins if a catalog entry is ever named `rand`.
 
 ## Playback Stack
