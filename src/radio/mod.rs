@@ -1,8 +1,12 @@
+mod icon;
+mod playback;
 mod player;
 pub mod stations;
+mod tray;
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -11,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::cli::RadioArgs;
 use crate::paths;
 use crate::yt::resolve_yt_dlp;
-use player::ExternalPlayer;
+use playback::Playback;
+use player::{ExternalPlayer, Outcome};
 use stations::{Station, StationKind};
 
 const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio dron)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
@@ -73,6 +78,9 @@ struct RadioState {
     description: String,
     #[serde(default)]
     process_kind: RadioProcessKind,
+    /// Mirrors the tray's pause toggle, written by the runner itself. Absent in older state files.
+    #[serde(default)]
+    paused: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +153,7 @@ fn play(station: Station) -> Result<()> {
         code: station.code.to_string(),
         description: station.name.to_string(),
         process_kind,
+        paused: false,
     })?;
     println!("playing {} {}", station.code, station.name);
     Ok(())
@@ -163,13 +172,20 @@ fn print_status() -> Result<()> {
     };
 
     if process_is_alive(&state) {
-        println!("playing {} {}", state.code, state.description);
+        println!("{}", status_line(&state));
     } else {
         let _ = remove_state();
         println!("stopped");
     }
 
     Ok(())
+}
+
+/// `status` output for a live runner: `paused` while the tray has playback
+/// stopped, `playing` otherwise.
+fn status_line(state: &RadioState) -> String {
+    let verb = if state.paused { "paused" } else { "playing" };
+    format!("{verb} {} {}", state.code, state.description)
 }
 
 fn playable_url(station: Station) -> Result<String> {
@@ -281,27 +297,90 @@ impl StreamRetry {
 /// Runs one direct or YouTube station under a supervisor: respawn ffplay
 /// whenever the stream ends or fails, re-resolving YouTube URLs each attempt,
 /// and give up (with a notification) after too many consecutive failures.
+/// The supervisor runs next to the station's tray, which can pause it.
 pub(crate) fn run_direct_runner(code: String) -> Result<()> {
     let station =
-        stations::find(&code).with_context(|| format!("unknown radio station '{code}'"))?;
-    run_station_stream_loop(*station)
+        *stations::find(&code).with_context(|| format!("unknown radio station '{code}'"))?;
+    run_hosted(station, move |playback| {
+        run_station_stream_loop(station, playback)
+    })
 }
 
-fn run_station_stream_loop(station: Station) -> Result<()> {
+/// Runs `supervise` on a worker thread next to the station's tray (ADR-0022) and
+/// returns its result. The runner stays alive while paused: only `supervise`
+/// finishing, or `lum radio stop` killing the runner, removes the tray.
+fn run_hosted(
+    station: Station,
+    supervise: impl FnOnce(&Playback) -> Result<()> + Send + 'static,
+) -> Result<()> {
+    let playback = Arc::new(Playback::with_observer(record_paused));
+    let supervisor = Arc::clone(&playback);
+    tray::host(station.name, playback, move || supervise(&supervisor))
+}
+
+/// Mirrors the tray's pause state into `radio-player.json` so `lum radio status`
+/// stays truthful. Best effort: a failed write must never disturb playback.
+fn record_paused(paused: bool) {
+    tracing::info!(paused, "radio playback toggled from the tray");
+    if let Err(error) = persist_paused(paused) {
+        tracing::warn!(error = %error, "failed to record the radio pause state");
+    }
+}
+
+fn persist_paused(paused: bool) -> Result<()> {
+    let Some(state) = read_state()? else {
+        return Ok(());
+    };
+    if let Some(state) = with_pause_state(state, std::process::id(), paused) {
+        write_state(&state)?;
+    }
+    Ok(())
+}
+
+/// Only the runner a state file names may change its pause state, so a replaced
+/// runner can never clobber its successor's entry.
+fn with_pause_state(mut state: RadioState, runner_pid: u32, paused: bool) -> Option<RadioState> {
+    (state.pid == runner_pid).then(|| {
+        state.paused = paused;
+        state
+    })
+}
+
+fn run_station_stream_loop(station: Station, playback: &Playback) -> Result<()> {
+    if station.kind == StationKind::YouTubePlaylist {
+        bail!("playlist stations use the playlist runner");
+    }
+    supervise_station(station, playback, || play_station_once(station, playback))
+}
+
+/// One playback attempt: resolve the stream URL, then play it until ffplay exits.
+/// Resolution failures count as attempt failures: they feed the retry loop
+/// instead of killing the runner.
+fn play_station_once(station: Station, playback: &Playback) -> Result<Outcome> {
+    let url = playable_url(station)?;
+    ExternalPlayer::play_live_until_exit(url, playback)
+}
+
+/// The respawn policy for one station: run `attempt` over and over until too
+/// many fail in a row. A pause from the tray is not a failure; the supervisor
+/// idles until playback resumes and then starts over with a clean streak.
+fn supervise_station(
+    station: Station,
+    playback: &Playback,
+    mut attempt: impl FnMut() -> Result<Outcome>,
+) -> Result<()> {
     let mut retry = StreamRetry::new();
     loop {
+        if playback.wait_until_playing() {
+            retry = StreamRetry::new();
+        }
         let started = Instant::now();
-        let attempt = match station.kind {
-            StationKind::YouTubePlaylist => bail!("playlist stations use the playlist runner"),
-            // Resolution failures count as attempt failures: they feed the
-            // retry loop instead of killing the runner.
-            StationKind::Direct | StationKind::YouTube => match playable_url(station) {
-                Ok(url) => ExternalPlayer::play_live_until_exit(url),
-                Err(error) => Err(error),
-            },
-        };
-        match attempt {
-            Ok(()) => tracing::debug!(station = %station.code, "radio stream ended"),
+        match attempt() {
+            Ok(Outcome::Paused) => {
+                retry = StreamRetry::new();
+                continue;
+            }
+            Ok(Outcome::Ended) => tracing::debug!(station = %station.code, "radio stream ended"),
             Err(error) => {
                 tracing::warn!(station = %station.code, error = %error, "radio stream attempt failed")
             }
@@ -313,7 +392,8 @@ fn run_station_stream_loop(station: Station) -> Result<()> {
                     delay = delay.as_secs(),
                     "respawning radio stream"
                 );
-                std::thread::sleep(delay);
+                // Wakes early on a pause; the loop then idles until resumed.
+                playback.sleep(delay);
             }
             Retry::GiveUp => {
                 let message = format!(
@@ -339,24 +419,41 @@ fn notify_stream_lost(message: &str) {
 }
 
 pub(crate) fn run_playlist_runner(code: String) -> Result<()> {
+    let station = *stations::find(&code)
+        .with_context(|| format!("unknown radio playlist station '{code}'"))?;
     let urls = randomized_playlist_urls(&code)?;
+    run_hosted(station, move |playback| {
+        run_playlist_loop(&code, &urls, playback)
+    })
+}
+
+fn run_playlist_loop(code: &str, urls: &[&'static str], playback: &Playback) -> Result<()> {
     loop {
         for (index, url) in urls.iter().enumerate() {
             let item_number = index + 1;
-            let stream_url = match resolve_youtube_stream_url(url) {
-                Ok(stream_url) => stream_url,
-                Err(error) => {
-                    let message =
-                        playlist_failure_message(&code, item_number, url, &error.to_string());
-                    tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
-                    bail!(message);
-                }
-            };
+            // A pause stops the current track; resuming plays it again from the start.
+            loop {
+                playback.wait_until_playing();
+                let stream_url = match resolve_youtube_stream_url(url) {
+                    Ok(stream_url) => stream_url,
+                    Err(error) => {
+                        let message =
+                            playlist_failure_message(code, item_number, url, &error.to_string());
+                        tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
+                        bail!(message);
+                    }
+                };
 
-            if let Err(error) = ExternalPlayer::play_until_exit(stream_url) {
-                let message = playlist_failure_message(&code, item_number, url, &error.to_string());
-                tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
-                bail!(message);
+                match ExternalPlayer::play_until_exit(stream_url, playback) {
+                    Ok(Outcome::Ended) => break,
+                    Ok(Outcome::Paused) => continue,
+                    Err(error) => {
+                        let message =
+                            playlist_failure_message(code, item_number, url, &error.to_string());
+                        tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
+                        bail!(message);
+                    }
+                }
             }
         }
     }
@@ -406,13 +503,23 @@ fn read_state() -> Result<Option<RadioState>> {
     Ok(Some(serde_json::from_str(&data)?))
 }
 
+/// Replaces the state file atomically: the runner rewrites it on every tray
+/// toggle, and a concurrent `lum radio status` must never read half a file.
 fn write_state(state: &RadioState) -> Result<()> {
+    use std::io::Write as _;
+
     let path = state_file()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, serde_json::to_string_pretty(state)?)
-        .with_context(|| format!("failed to write radio state {}", path.display()))
+    let dir = path
+        .parent()
+        .context("radio state path has no parent directory")?;
+    std::fs::create_dir_all(dir)?;
+    let mut staged = tempfile::NamedTempFile::new_in(dir)
+        .with_context(|| format!("failed to stage radio state in {}", dir.display()))?;
+    staged.write_all(serde_json::to_string_pretty(state)?.as_bytes())?;
+    staged
+        .persist(&path)
+        .with_context(|| format!("failed to write radio state {}", path.display()))?;
+    Ok(())
 }
 
 fn remove_state() -> Result<()> {
@@ -427,7 +534,6 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
@@ -503,6 +609,101 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.process_kind, RadioProcessKind::Ffplay);
+    }
+
+    #[test]
+    fn legacy_state_defaults_to_not_paused() {
+        let state: RadioState = serde_json::from_str(
+            r#"{"pid":123,"start_time":456,"code":"dron","description":"Drone Zone","process_kind":"DirectRunner"}"#,
+        )
+        .unwrap();
+
+        assert!(!state.paused);
+    }
+
+    fn runner_state(paused: bool) -> RadioState {
+        RadioState {
+            pid: 7,
+            start_time: Some(1),
+            code: "dron".into(),
+            description: "Drone Zone".into(),
+            process_kind: RadioProcessKind::DirectRunner,
+            paused,
+        }
+    }
+
+    #[test]
+    fn pause_state_round_trips_through_the_state_file_format() {
+        let json = serde_json::to_string(&runner_state(true)).unwrap();
+        let state: RadioState = serde_json::from_str(&json).unwrap();
+
+        assert!(state.paused);
+    }
+
+    #[test]
+    fn status_line_distinguishes_playing_from_paused() {
+        assert_eq!(status_line(&runner_state(false)), "playing dron Drone Zone");
+        assert_eq!(status_line(&runner_state(true)), "paused dron Drone Zone");
+    }
+
+    #[test]
+    fn only_the_runner_a_state_names_may_change_its_pause_state() {
+        assert!(
+            with_pause_state(runner_state(false), 8, true).is_none(),
+            "a different process must leave the entry alone"
+        );
+        assert!(
+            with_pause_state(runner_state(false), 7, true)
+                .unwrap()
+                .paused
+        );
+        assert!(
+            !with_pause_state(runner_state(true), 7, false)
+                .unwrap()
+                .paused
+        );
+    }
+
+    /// Pausing and resuming must never feed the give-up streak. Only real stream
+    /// failures do, and `StreamRetry` has its own tests for those.
+    #[test]
+    fn pausing_is_not_a_stream_failure() {
+        let station = *stations::find("dron").expect("catalog has dron");
+        let playback = Arc::new(Playback::default());
+        let (started_tx, started) = std::sync::mpsc::channel();
+        let (kill_tx, killed) = std::sync::mpsc::channel::<()>();
+        let supervisor = {
+            let playback = Arc::clone(&playback);
+            std::thread::spawn(move || {
+                supervise_station(station, &playback, || {
+                    let _ = started_tx.send(());
+                    // Stands in for ffplay: runs until the test kills it, as a pause would.
+                    killed.recv().map_err(|_| anyhow!("test over"))?;
+                    Ok(Outcome::Paused)
+                })
+            })
+        };
+
+        // More cycles than the give-up threshold: had pauses counted as failures, the
+        // supervisor would have backed off and then given up by now.
+        for cycle in 1..=MAX_CONSECUTIVE_FAILURES + 2 {
+            started
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap_or_else(|_| panic!("attempt {cycle} never started"));
+            assert!(playback.toggle(), "pause");
+            kill_tx.send(()).expect("the supervisor is listening");
+            assert!(!playback.toggle(), "resume");
+        }
+
+        started
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the attempt after the last resume starts at once");
+        assert!(!supervisor.is_finished(), "the supervisor must not give up");
+
+        // Park it: paused, it idles for the rest of the process instead of failing
+        // later, which would end in a desktop notification.
+        assert!(playback.toggle());
+        kill_tx.send(()).expect("the supervisor is listening");
     }
 
     #[test]
@@ -720,7 +921,8 @@ mod tests {
             kind: StationKind::Direct,
             tags: &[],
         };
-        let runner = std::thread::spawn(move || run_station_stream_loop(station));
+        let runner =
+            std::thread::spawn(move || run_station_stream_loop(station, &Playback::default()));
         // The first attempt fails fast; after the 2s backoff the runner must
         // respawn ffplay, which connects as the second fixture connection.
         let deadline = Instant::now() + Duration::from_secs(20);
@@ -738,5 +940,86 @@ mod tests {
         // A thread cannot be aborted: with the fixture stopped, the runner's
         // next ffplay fails to connect and the test process exit ends it.
         let _ = Command::new("pkill").args(["-f", url]).status();
+    }
+
+    /// End-to-end pause probe on the real ffplay spawn path: a pause must kill
+    /// ffplay and keep the runner idle, and every resume must reconnect without
+    /// ever counting toward the give-up streak.
+    #[test]
+    fn station_runner_pauses_and_resumes_ffplay_without_giving_up() {
+        if !player::playback_tests_enabled() {
+            eprintln!("skipping: set LUM_RADIO_PLAYBACK_TESTS=1 to run");
+            return;
+        }
+        let Some(bytes) = player::fixture_mp3() else {
+            eprintln!("skipping: ffmpeg not available for fixture generation");
+            return;
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let accepts = Arc::new(AtomicUsize::new(0));
+        // Each connection feeds ~6s of audio and then stalls, so ffplay stays up
+        // for the whole probe and any extra connection is a respawn we caused.
+        let addr = player::spawn_repeating_fixture(
+            bytes,
+            3,
+            player::FixtureMode::StallEach,
+            stop.clone(),
+            accepts.clone(),
+        );
+        let url: &'static str = Box::leak(format!("http://{addr}/stream.mp3").into_boxed_str());
+        let station = Station {
+            code: "fxpz",
+            name: "fixture pause station",
+            url,
+            kind: StationKind::Direct,
+            tags: &[],
+        };
+        let playback = Arc::new(Playback::default());
+        let runner = {
+            let playback = Arc::clone(&playback);
+            std::thread::spawn(move || run_station_stream_loop(station, &playback))
+        };
+        let wait_for_connections = |wanted: usize| {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while Instant::now() < deadline && accepts.load(Ordering::Relaxed) < wanted {
+                assert!(
+                    !runner.is_finished(),
+                    "runner exited before connection {wanted}"
+                );
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let served = accepts.load(Ordering::Relaxed);
+            assert!(
+                served >= wanted,
+                "ffplay never reached connection {wanted} (served: {served})"
+            );
+        };
+
+        let cycles = MAX_CONSECUTIVE_FAILURES as usize + 1;
+        for cycle in 1..=cycles {
+            wait_for_connections(cycle);
+            assert!(playback.toggle(), "pause");
+            if cycle == 1 {
+                // Longer than the first respawn backoff: a pause mistaken for a
+                // failure would respawn ffplay right here.
+                std::thread::sleep(Duration::from_millis(2500));
+                assert_eq!(
+                    accepts.load(Ordering::Relaxed),
+                    1,
+                    "ffplay respawned while paused"
+                );
+            }
+            assert!(!playback.toggle(), "resume");
+        }
+        wait_for_connections(cycles + 1);
+        assert!(
+            !runner.is_finished(),
+            "runner gave up although the user only paused it"
+        );
+
+        // Pause once more: this kills the last ffplay and parks the runner, so
+        // nothing keeps playing or retrying after the probe.
+        assert!(playback.toggle());
+        stop.store(true, Ordering::Relaxed);
     }
 }

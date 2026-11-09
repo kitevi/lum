@@ -8,8 +8,8 @@
 - `lum radio list` explicitly lists built-in stations one row per station.
 - `lum radio <code>` starts a station in the background, replacing any current station.
 - `lum radio rand` starts a random built-in station, skipping the current one.
-- `lum radio status` prints the remembered playback state.
-- `lum radio stop` stops playback.
+- `lum radio status` prints the remembered playback state: `playing`, `paused`, or `stopped`.
+- `lum radio stop` stops playback and removes the tray.
 - Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
 - Listings are one aligned row per station: `code  name  tag, tag`.
 
@@ -52,6 +52,22 @@ Radio playback uses the existing ffmpeg dependency path:
 
 The old pure-Rust foreground audio path is no longer the product direction for `lum radio`. Do not reintroduce CPAL/Symphonia/ring-buffer terminal playback unless an ADR reverses this decision.
 
+## Tray
+
+While a station runner is alive it shows a system tray icon with a single menu item, `Stop <station>` / `Play <station>` (ADR-0022). The tray is an extra, not a requirement: if it cannot be created, the runner logs a warning and keeps playing.
+
+- The runner's main thread owns the tray and every menu object; the supervisor runs on a worker thread that starts first. They share only `Playback` (`playback.rs`): the pause flag and the running ffplay. Never touch tray or menu objects from the worker: macOS requires the main thread, and release builds use `panic = "abort"`, so a panic would take playback down with it.
+- Stop kills ffplay and leaves the runner idle. Play respawns it with a fresh failure streak. A pause is not a stream failure: it never backs off or counts toward giving up. Backoff sleeps wake early on a pause. Playlist stations replay the current track on resume. Resume rejoins the live stream, so ADR-0020's 5s of leading silence applies again.
+- The tray stays visible while paused, because that is how Play works. `lum radio stop`, starting another station, or the runner giving up removes it. There is deliberately no Quit item.
+- The runner records `paused` in `radio-player.json` so `status` stays truthful; see Runtime Semantics.
+- Linux uses tray-icon's `ksni` backend: StatusNotifierItem over D-Bus, pure Rust, no GTK. It needs a tray host. KDE, Xfce and most bars have one; stock GNOME needs the AppIndicator extension. Without a host the icon is simply invisible. Do not switch to tray-icon's default backend: it links GTK 3, and then every lum command would need GTK 3 installed just to start.
+- Windows and macOS run a `winit` event loop on the main thread (`tray.rs`). macOS uses the Accessory activation policy, so there is no Dock icon.
+- The icon is a small radio drawn in code (`icon.rs`), so there is no image asset to ship. Its antenna is up while playing and folded away while paused, so the state shows in the silhouette and not only in the colour (a template has no colour, and green against grey is a weak cue for colour-blind users).
+- The icon has to read on any panel, light or dark, because the host paints it over a panel we cannot see. The colour ink uses mid-tone fills, and a test holds them above WCAG's 3:1 contrast floor for graphics against real dark and light panels. The speaker and knobs are holes, so they take the panel's own colour, and a faint white rim around the outside keeps the icon visible on mid-tone panels while vanishing on light ones. macOS gets a black template image instead, which the system tints for the menu bar (`with_icon_templated`); that is why the state also changes the shape and, in the template, the opacity.
+- The geometry sits on a 16-unit grid so the main edges stay crisp at the common 16 px tray size. There is no preview tool in the repo: when you change the drawing, composite `icon::rgba` over a dark and a light panel at 16, 24 and 32 px and look at it; thin shapes that look fine at 64 px turn to mush at 16.
+- Clicking the icon itself is not a portable gesture across tray hosts, which is why the toggle is a menu item.
+- Windows caveat: `lum radio stop` ends the runner with TerminateProcess, and Windows can leave the icon of a killed process in the notification area until the mouse passes over it. A graceful stop path would fix that if it matters.
+
 ## Supported Streams
 
 Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist. Some RadCap and NTS endpoints serve ADTS AAC (`audio/aacp`); `ffplay` decodes it with no extra configuration.
@@ -69,17 +85,18 @@ Out of scope unless a real station requires it:
 Controls are process-backed, not terminal-key backed:
 
 - Direct and YouTube stations remember the supervisor runner process; `stop` kills the runner tree (runner plus its ffplay child) and clears state.
-- `status` reports `playing` while the remembered runner process is alive, meaning it is actively playing or retrying with backoff.
+- `status` reports `playing` while the remembered runner process is alive and not paused, meaning it is actively playing or retrying with backoff, and `paused` while the tray has playback stopped.
 - After 5 consecutive short-lived playback attempts (a session shorter than 60 seconds resets the streak), the runner gives up, sends a desktop notification, logs the failure, and exits; the next `status` then reports `stopped`. Failed yt-dlp resolutions count as failed attempts and back off like any other failure.
 - Runner diagnostics (attempt failures, respawn decisions, ffplay warnings) go to the rotating `lum.log` in lum's log directory, not the terminal, because the runner runs detached with nulled stdio.
 - Starting a new station stops the remembered process and starts the new station.
-- Playlist stations keep the pre-existing runner semantics.
+- Playlist stations keep the pre-existing runner semantics, plus the tray pause.
 
-State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered runner PID and process start time when available. Legacy state files written before runners existed remember an ffplay PID directly and still work.
+State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered runner PID and process start time when available, and `paused`. The runner itself updates `paused` when the tray toggles, only if the file names its own PID, and every write replaces the file atomically so a concurrent `status` never reads half a file. Legacy state files written before runners existed remember an ffplay PID directly and still work; files without `paused` read as not paused.
 
 User-facing output remains plain/script-friendly:
 
 - `playing <code> <description>`
+- `paused <code> <description>`
 - `stopped`
 
 ## Tests
@@ -105,6 +122,19 @@ cargo run -- radio dron
 cargo run -- radio status
 cargo run -- radio stop
 ```
+
+Pausing is covered by ordinary unit tests (`Playback`, and a supervisor that must never count a pause as a failure) plus an opt-in probe in the same `LUM_RADIO_PLAYBACK_TESTS=1` set, which drives a real ffplay through pause/resume cycles. The tray itself needs a desktop session with a tray host, so it is verified by hand:
+
+```sh
+cargo run -- radio dron
+cargo run -- radio status   # playing dron SomaFM Drone Zone
+# A tray icon appears. Click its "Stop ..." item: audio stops and the item reads "Play ...".
+cargo run -- radio status   # paused dron SomaFM Drone Zone
+# Click again: audio returns.
+cargo run -- radio stop     # the tray icon disappears
+```
+
+To try the tray without touching your real radio state or speakers, run the commands with `XDG_STATE_HOME` pointing at a scratch directory and `SDL_AUDIODRIVER=dummy`. On Linux the click can be sent over D-Bus: find the item with `busctl --user list | grep StatusNotifierItem`, then call `com.canonical.dbusmenu` `Event` with item id `1` and `clicked`.
 
 Verify random selection: play any station, then confirm `rand` never repeats it and that `status` reports the station that was drawn.
 

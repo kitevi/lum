@@ -244,6 +244,8 @@ Play a random station, never the one already playing:
 lum radio rand
 ```
 
+While a station plays, a system tray icon offers a Stop/Play toggle. It needs a tray host: Windows, macOS, KDE and most Linux bars have one, and stock GNOME needs the AppIndicator extension. Without one the icon is simply absent and playback is unaffected. `lum radio status` reports `playing`, `paused` or `stopped`, and `lum radio stop` ends playback and removes the icon.
+
 ### Repositories
 
 Scan a directory tree for Git repository status:

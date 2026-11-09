@@ -36,6 +36,11 @@ ignore = "0.4.33"
 jiff = "0.2.37"
 globset = "0.4.20"
 notify-rust = "4.18.1"
+# The radio tray. The `ksni` backend is StatusNotifierItem over D-Bus, so Linux needs no GTK; the
+# default backend would make every lum command require libgtk-3 just to start (see ADR-0022).
+tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
+# Lets the tray kill the ffplay that the supervisor is blocked waiting on.
+shared_child = "1.1.2"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 fastrand = "2.5.0"
 rayon = "1.12.0"
@@ -44,6 +49,14 @@ url = "2.5.8"
 usage = { package = "usage-rs", version = "6.12.0", features = ["completions"] }
 gix-credentials = { version = "0.41.0", default-features = false }
 gix-error = "0.4.0"
+
+# Windows and macOS need a native event loop on the tray's thread; the Linux backend runs its own.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+
+# tray-icon's own examples nudge the main run loop after creating the status item.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

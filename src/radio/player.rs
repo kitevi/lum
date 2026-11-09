@@ -3,14 +3,26 @@ use std::{
     io::{BufRead, BufReader},
     path::Path,
     process::{Command, Stdio},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result, bail};
+use shared_child::SharedChild;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 
+use super::playback::Playback;
 use crate::ffmpeg;
 
 pub(super) struct ExternalPlayer;
+
+/// How one ffplay session ended.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Outcome {
+    /// ffplay exited by itself: the stream or track ended.
+    Ended,
+    /// A pause from the tray killed ffplay on purpose.
+    Paused,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PlayerProcess {
@@ -59,29 +71,37 @@ impl ExternalPlayer {
         kill_pid_any(pid, start_time);
     }
 
-    pub(super) fn play_until_exit(url: String) -> Result<()> {
-        Self::play_ffplay_until_exit(ffplay_command, url)
+    pub(super) fn play_until_exit(url: String, playback: &Playback) -> Result<Outcome> {
+        Self::play_ffplay_until_exit(ffplay_command, url, playback)
     }
 
     /// Like `play_until_exit`, but with live-stream reconnect recovery so
     /// dropped or stalled connections heal without exiting.
-    pub(super) fn play_live_until_exit(url: String) -> Result<()> {
-        Self::play_ffplay_until_exit(live_stream_ffplay_command, url)
+    pub(super) fn play_live_until_exit(url: String, playback: &Playback) -> Result<Outcome> {
+        Self::play_ffplay_until_exit(live_stream_ffplay_command, url, playback)
     }
 
+    /// Runs ffplay until it exits, registered with `playback` so a pause from the
+    /// tray can kill it. A pause ends the session as `Outcome::Paused`, not as a failure.
     fn play_ffplay_until_exit(
         build_command: impl Fn(String, &str) -> Command,
         url: String,
-    ) -> Result<()> {
+        playback: &Playback,
+    ) -> Result<Outcome> {
         let ffplay = ffmpeg::resolve_ffplay()?;
         let ffplay = ffplay.to_string_lossy().into_owned();
-        let mut child = build_command(ffplay, &url)
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("failed to start ffplay")?;
+        let mut command = build_command(ffplay, &url);
+        command.stderr(Stdio::piped());
+        let child = Arc::new(SharedChild::spawn(&mut command).context("failed to start ffplay")?);
+        if !playback.attach(Arc::clone(&child)) {
+            // Paused between the supervisor's check and the spawn: discard this ffplay.
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(Outcome::Paused);
+        }
         // The runner is detached with nulled stdio, so ffplay's warnings
         // (reconnects, decode errors) only survive in the rotating log.
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(stderr) = child.take_stderr() {
             for line in BufReader::new(stderr).split(b'\n').map_while(Result::ok) {
                 let line = String::from_utf8_lossy(&line);
                 let line = line.trim();
@@ -90,11 +110,17 @@ impl ExternalPlayer {
                 }
             }
         }
-        let status = child.wait().context("failed to wait for ffplay")?;
+        let status = child.wait();
+        // Detach before propagating a wait error so the handle never outlives the child.
+        let paused = playback.detach();
+        let status = status.context("failed to wait for ffplay")?;
+        if paused {
+            return Ok(Outcome::Paused);
+        }
         if !status.success() {
             bail!("ffplay exited with code {:?}", status.code());
         }
-        Ok(())
+        Ok(Outcome::Ended)
     }
 }
 
@@ -325,7 +351,7 @@ pub(super) fn fixture_mp3() -> Option<Vec<u8>> {
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy)]
-enum FixtureMode {
+pub(super) enum FixtureMode {
     /// Close each connection after writing the fixture audio.
     DropEach,
     /// Hold each connection open without sending anything.
@@ -337,7 +363,7 @@ enum FixtureMode {
 /// dropping or stalling the connection depending on `mode`. Counts accepted
 /// connections in `accepts` so tests can observe reconnects and respawns.
 #[cfg(test)]
-fn spawn_repeating_fixture(
+pub(super) fn spawn_repeating_fixture(
     bytes: Vec<u8>,
     loops: u32,
     mode: FixtureMode,
