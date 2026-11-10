@@ -108,6 +108,23 @@ fn env_set_opendesign_resolves_to_api_key_variable() {
 }
 
 #[test]
+fn env_set_keenable_emits_export_and_aliases_lists_it() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["env", "set", "keenable", "kn-test"])
+        .assert()
+        .success()
+        .stdout("export KEENABLE_API_KEY='kn-test'\n");
+
+    lum_with_env(&home)
+        .args(["env", "aliases"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("keenable    → KEENABLE_API_KEY"));
+}
+
+#[test]
 fn env_set_deepseek_emits_export_and_aliases_lists_it() {
     let home = TempDir::new().unwrap();
 
