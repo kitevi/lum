@@ -19,6 +19,9 @@ pub(super) const SIZE: u32 = 64;
 /// Subsamples per pixel axis; edges are anti-aliased by averaging them.
 const SUPERSAMPLE: u32 = 8;
 const GRID: f32 = 16.0;
+/// How far the folded radio is lifted, in grid units. Playing, the antenna balances the body
+/// about the grid centre. Folded, the body alone sits 2.5 units low, so it is lifted to match.
+const FOLDED_LIFT: f32 = 2.5;
 
 /// Fill colours, picked for contrast against both dark and light panels.
 const PLAYING: [u8; 3] = [0x1a, 0x8f, 0x4d];
@@ -64,6 +67,8 @@ fn capsule((x, y): Point, (ax, ay): Point, (bx, by): Point, half_width: f32) -> 
 /// Signed distances at `p`, negative inside: `(radio, silhouette)`. The silhouette is the
 /// radio with its holes filled in, which is what the rim follows.
 fn radio(p: Point, antenna: bool) -> (f32, f32) {
+    // Sampling lower moves the shape up, so the folded radio is drawn FOLDED_LIFT higher.
+    let p = if antenna { p } else { (p.0, p.1 + FOLDED_LIFT) };
     let body = rounded_box(p, (1.0, 6.0), (15.0, 15.0), 2.0);
     let silhouette = if antenna {
         body.min(capsule(p, (10.5, 6.5), (5.5, 2.2), 1.0))
@@ -188,8 +193,8 @@ mod tests {
 
     #[test]
     fn the_antenna_is_up_only_while_playing() {
-        // The middle of the antenna: above the body, so empty once it is folded away.
-        let on_the_antenna = (8.0, 4.35);
+        // The antenna's tip: above the lifted body, so empty once it is folded away.
+        let on_the_antenna = (5.5, 2.2);
         for ink in INKS {
             assert_eq!(pixel(&rgba(false, ink), on_the_antenna)[3], 255);
             assert_eq!(pixel(&rgba(true, ink), on_the_antenna)[3], 0);
@@ -210,11 +215,33 @@ mod tests {
 
     #[test]
     fn the_speaker_is_a_hole_that_takes_the_panels_colour() {
-        for paused in STATES {
+        // The speaker's centre, lifted with the folded radio.
+        for (paused, centre) in [(false, (6.0, 10.5)), (true, (6.0, 10.5 - FOLDED_LIFT))] {
             for ink in INKS {
-                assert_eq!(pixel(&rgba(paused, ink), (6.0, 10.5))[3], 0);
+                assert_eq!(
+                    pixel(&rgba(paused, ink), centre)[3],
+                    0,
+                    "{ink:?} paused={paused}"
+                );
             }
         }
+    }
+
+    #[test]
+    fn the_stopped_silhouette_is_vertically_centred() {
+        let icon = rgba(true, Ink::Template);
+        let alpha = |x: u32, y: u32| icon[((y * SIZE + x) * 4 + 3) as usize];
+        let inked: Vec<u32> = (0..SIZE)
+            .filter(|&y| (0..SIZE).any(|x| alpha(x, y) >= 128))
+            .collect();
+        let (top, bottom) = (inked[0], inked[inked.len() - 1]);
+        let unit = GRID / SIZE as f32;
+        let centre = (top + bottom + 1) as f32 / 2.0 * unit;
+        assert!(
+            (centre - GRID / 2.0).abs() <= 0.05,
+            "stopped icon is centred at {centre}, not {}",
+            GRID / 2.0
+        );
     }
 
     #[test]
