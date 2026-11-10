@@ -135,6 +135,14 @@ fn random_station_in(
 
 fn play(station: Station) -> Result<()> {
     let _ = stop_existing();
+    start(station)?;
+    println!("playing {} {}", station.code, station.name);
+    Ok(())
+}
+
+/// Starts `station`'s runner and makes it the remembered one. Whatever was
+/// remembered before is the caller's to stop.
+fn start(station: Station) -> Result<()> {
     let (player, process_kind) = match station.kind {
         StationKind::YouTubePlaylist => (
             ExternalPlayer::start_playlist(station.code)?,
@@ -154,9 +162,7 @@ fn play(station: Station) -> Result<()> {
         description: station.name.to_string(),
         process_kind,
         paused: false,
-    })?;
-    println!("playing {} {}", station.code, station.name);
-    Ok(())
+    })
 }
 
 fn stop() -> Result<()> {
@@ -315,7 +321,57 @@ fn run_hosted(
 ) -> Result<()> {
     let playback = Arc::new(Playback::with_observer(record_paused));
     let supervisor = Arc::clone(&playback);
-    tray::host(station.name, playback, move || supervise(&supervisor))
+    let halt = Arc::clone(&playback);
+    tray::host(
+        station,
+        playback,
+        move |request| handle_tray_request(station, &halt, request),
+        move || supervise(&supervisor),
+    )
+}
+
+/// Carries out a tray menu request on the tray's thread (ADR-0023) and returns
+/// whether this runner should now exit. A switch starts the successor first, so a
+/// failed start leaves the current station playing.
+fn handle_tray_request(current: Station, playback: &Playback, request: tray::Request) -> bool {
+    let next = match request {
+        tray::Request::Quit => None,
+        tray::Request::Switch(station) => Some(Ok(station)),
+        tray::Request::Random => Some(random_station(Some(current.code.to_string()))),
+    };
+    let handed_over = match next {
+        None => {
+            tracing::info!(station = %current.code, "radio quit from the tray");
+            // A leftover state file is harmless: `status` drops one whose runner is gone.
+            if let Err(error) = forget_own_state() {
+                tracing::warn!(error = %error, "failed to clear the radio state on quit");
+            }
+            Ok(())
+        }
+        Some(next) => next.and_then(|next| {
+            tracing::info!(from = %current.code, to = %next.code, "radio station switched from the tray");
+            start(*next)
+        }),
+    };
+    match handed_over {
+        Ok(()) => {
+            playback.halt();
+            true
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "radio tray request failed; playback continues");
+            false
+        }
+    }
+}
+
+/// Removes the state file if it still names this runner, so `status` reports
+/// `stopped` after a tray Quit without ever clobbering a successor's entry.
+fn forget_own_state() -> Result<()> {
+    if read_state()?.is_some_and(|state| state.pid == std::process::id()) {
+        remove_state()?;
+    }
+    Ok(())
 }
 
 /// Mirrors the tray's pause state into `radio-player.json` so `lum radio status`

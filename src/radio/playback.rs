@@ -75,6 +75,15 @@ impl Playback {
         paused
     }
 
+    /// Silences playback for good, for a runner that is about to exit: kills the
+    /// running ffplay and parks the supervisor as a pause would, but without telling
+    /// the observer, because the state file is no longer this runner's to write.
+    pub(super) fn halt(&self) {
+        let mut inner = self.lock();
+        inner.paused = true;
+        inner.interrupt_child();
+    }
+
     /// Blocks while paused. Returns whether it had to wait, so the supervisor can
     /// start the next session fresh instead of inheriting an old failure streak.
     pub(super) fn wait_until_playing(&self) -> bool {
@@ -242,6 +251,25 @@ mod tests {
         assert!(!status.success());
         assert!(playback.detach(), "the pause caused this exit");
         assert!(!playback.detach(), "the mark is consumed by the first read");
+    }
+
+    #[test]
+    fn halting_kills_the_attached_child_without_telling_the_observer() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let playback = Playback::with_observer({
+            let seen = Arc::clone(&seen);
+            move |paused| seen.lock().unwrap().push(paused)
+        });
+        let child = long_running_child();
+        assert!(playback.attach(Arc::clone(&child)));
+
+        playback.halt();
+
+        let status = child.wait().expect("child exits once killed");
+        assert!(!status.success());
+        assert!(playback.is_paused(), "the supervisor must stay parked");
+        assert!(playback.detach(), "the exit is not a stream failure");
+        assert!(seen.lock().unwrap().is_empty());
     }
 
     #[test]

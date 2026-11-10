@@ -1,4 +1,5 @@
-//! The radio tray: one Stop/Play toggle, shown for as long as a station runner lives.
+//! The radio tray: a Stop/Play toggle, the station list and Quit, shown for as long
+//! as a station runner lives.
 //!
 //! The runner's main thread owns every tray object, while the supervisor runs on a
 //! worker thread and only ever touches the shared [`Playback`] handle. Keeping all
@@ -8,22 +9,33 @@
 //!
 //! The tray is a convenience, never a precondition. If it cannot be created (no
 //! D-Bus session, no tray host, no window server) the failure is logged and the
-//! station keeps playing. See ADR-0022.
+//! station keeps playing. See ADR-0022 and ADR-0023.
 
 use std::sync::Arc;
 use std::thread;
 
 use anyhow::{Context, Result, anyhow};
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::menu::{
+    CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu,
+};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 use super::icon::{self, Ink};
 use super::playback::Playback;
+use super::stations::{self, Station};
 
 /// Everything that reaches the UI thread.
 enum Msg {
     Menu(MenuEvent),
     WorkerDone,
+}
+
+/// What a menu click asks of the runner beyond the pause toggle. Every one of them,
+/// once carried out, ends this runner.
+pub(super) enum Request {
+    Switch(&'static Station),
+    Random,
+    Quit,
 }
 
 /// The menu item names the action a click performs, not the current state.
@@ -78,60 +90,104 @@ fn set_icon(tray: &TrayIcon, icon: Icon) -> tray_icon::Result<()> {
     tray.set_icon(Some(icon))
 }
 
-/// The tray icon and its single menu item. Only ever used on the UI thread.
+/// The tray icon and its menu. Only ever used on the UI thread.
 struct Ui {
     tray: TrayIcon,
     toggle: MenuItem,
-    station: String,
+    switches: Vec<(MenuId, &'static Station)>,
+    random: MenuId,
+    quit: MenuId,
+    station: &'static str,
     playback: Arc<Playback>,
 }
 
 impl Ui {
-    fn new(station: &str, playback: Arc<Playback>) -> Result<Self> {
+    fn new(station: Station, playback: Arc<Playback>) -> Result<Self> {
         let paused = playback.is_paused();
-        let toggle = MenuItem::new(toggle_label(station, paused), true, None);
+        let toggle = MenuItem::new(toggle_label(station.name, paused), true, None);
+
+        // The current station is listed too, checked and inert, so the list reads
+        // the same whichever station is playing.
+        let others = Submenu::new("Stations", true);
+        let mut switches = Vec::new();
+        for other in stations::all() {
+            let appended = if other.code == station.code {
+                others.append(&CheckMenuItem::new(other.name, false, true, None))
+            } else {
+                let item = MenuItem::new(other.name, true, None);
+                switches.push((item.id().clone(), other));
+                others.append(&item)
+            };
+            appended.map_err(menu_error)?;
+        }
+        let random = MenuItem::new("Random station", true, None);
+        let quit = MenuItem::new("Quit radio", true, None);
+
         let menu = Menu::new();
-        menu.append(&toggle)
-            .map_err(|error| anyhow!("failed to build the tray menu: {error}"))?;
+        menu.append_items(&[
+            &toggle,
+            &PredefinedMenuItem::separator(),
+            &others,
+            &random,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ])
+        .map_err(menu_error)?;
         let builder = TrayIconBuilder::new()
             // A stable id lets tray hosts remember the user's visibility choice.
             .with_id("lum-radio")
             .with_menu(Box::new(menu))
-            .with_tooltip(tooltip(station, paused));
+            .with_tooltip(tooltip(station.name, paused));
         let tray = with_icon(builder, tray_image(paused)?)
             .build()
             .context("failed to create the tray icon")?;
         Ok(Self {
             tray,
             toggle,
-            station: station.to_owned(),
+            switches,
+            random: random.into_id(),
+            quit: quit.into_id(),
+            station: station.name,
             playback,
         })
     }
 
-    fn on_menu_event(&self, event: &MenuEvent) {
-        if event.id != *self.toggle.id() {
-            return;
-        }
-        let paused = self.playback.toggle();
-        self.toggle.set_text(toggle_label(&self.station, paused));
-        if let Err(error) = self.refresh(paused) {
-            tracing::debug!(error = %error, "failed to refresh the tray after a toggle");
+    /// Handles the pause toggle here; any other click comes back as a [`Request`]
+    /// for the runner.
+    fn on_menu_event(&self, event: &MenuEvent) -> Option<Request> {
+        if event.id == *self.toggle.id() {
+            let paused = self.playback.toggle();
+            self.toggle.set_text(toggle_label(self.station, paused));
+            if let Err(error) = self.refresh(paused) {
+                tracing::debug!(error = %error, "failed to refresh the tray after a toggle");
+            }
+            None
+        } else if event.id == self.quit {
+            Some(Request::Quit)
+        } else if event.id == self.random {
+            Some(Request::Random)
+        } else {
+            let (_, station) = self.switches.iter().find(|(id, _)| *id == event.id)?;
+            Some(Request::Switch(station))
         }
     }
 
     fn refresh(&self, paused: bool) -> Result<()> {
         self.tray
-            .set_tooltip(Some(tooltip(&self.station, paused)))
+            .set_tooltip(Some(tooltip(self.station, paused)))
             .map_err(|error| anyhow!("{error}"))?;
         set_icon(&self.tray, tray_image(paused)?).map_err(|error| anyhow!("{error}"))
     }
 }
 
-fn build_ui(station: &str, playback: Arc<Playback>) -> Option<Ui> {
+fn menu_error(error: tray_icon::menu::Error) -> anyhow::Error {
+    anyhow!("failed to build the tray menu: {error}")
+}
+
+fn build_ui(station: Station, playback: Arc<Playback>) -> Option<Ui> {
     match Ui::new(station, playback) {
         Ok(ui) => {
-            tracing::info!(station, "radio tray ready");
+            tracing::info!(station = station.name, "radio tray ready");
             Some(ui)
         }
         Err(error) => {
@@ -167,12 +223,18 @@ fn spawn_worker(
 /// Runs `work` on a worker thread while this thread hosts the tray, and returns
 /// `work`'s result once it finishes. The tray disappears with the worker.
 ///
+/// `on_request` runs on this thread for every menu click other than the pause
+/// toggle. When it returns true the runner is done: the tray is removed and this
+/// returns at once, without waiting for `work`, which is left parked on a halted
+/// [`Playback`] until the process exits.
+///
 /// Linux and BSD: the StatusNotifierItem backend runs its own D-Bus thread, so
 /// this thread only relays menu events.
 #[cfg(not(any(windows, target_os = "macos")))]
 pub(super) fn host(
-    station: &str,
+    station: Station,
     playback: Arc<Playback>,
+    on_request: impl Fn(Request) -> bool,
     work: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> Result<()> {
     use std::sync::mpsc;
@@ -192,8 +254,9 @@ pub(super) fn host(
     for msg in rx {
         match msg {
             Msg::Menu(event) => {
-                if let Some(ui) = &ui {
-                    ui.on_menu_event(&event);
+                let request = ui.as_ref().and_then(|ui| ui.on_menu_event(&event));
+                if request.is_some_and(&on_request) {
+                    return Ok(());
                 }
             }
             Msg::WorkerDone => break,
@@ -208,12 +271,18 @@ pub(super) fn host(
 /// Runs `work` on a worker thread while this thread hosts the tray, and returns
 /// `work`'s result once it finishes. The tray disappears with the worker.
 ///
+/// `on_request` runs on this thread for every menu click other than the pause
+/// toggle. When it returns true the runner is done: the tray is removed and this
+/// returns at once, without waiting for `work`, which is left parked on a halted
+/// [`Playback`] until the process exits.
+///
 /// Windows and macOS: the tray needs a native event loop on this thread, which
 /// must be the main thread on macOS.
 #[cfg(any(windows, target_os = "macos"))]
 pub(super) fn host(
-    station: &str,
+    station: Station,
     playback: Arc<Playback>,
+    on_request: impl Fn(Request) -> bool,
     work: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> Result<()> {
     use winit::application::ApplicationHandler;
@@ -224,13 +293,16 @@ pub(super) fn host(
     use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
     use winit::window::WindowId;
 
-    struct App<'a> {
-        station: &'a str,
+    struct App<R> {
+        station: Station,
         playback: Arc<Playback>,
+        on_request: R,
         ui: Option<Ui>,
+        /// A request ended the runner, so the worker must not be waited for.
+        left: bool,
     }
 
-    impl ApplicationHandler<Msg> for App<'_> {
+    impl<R: Fn(Request) -> bool> ApplicationHandler<Msg> for App<R> {
         // The icon is created once the loop is actually running, which macOS requires.
         fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
             if cause == StartCause::Init {
@@ -247,8 +319,11 @@ pub(super) fn host(
         fn user_event(&mut self, event_loop: &ActiveEventLoop, msg: Msg) {
             match msg {
                 Msg::Menu(event) => {
-                    if let Some(ui) = &self.ui {
-                        ui.on_menu_event(&event);
+                    let request = self.ui.as_ref().and_then(|ui| ui.on_menu_event(&event));
+                    if request.is_some_and(&self.on_request) {
+                        self.left = true;
+                        self.ui = None;
+                        event_loop.exit();
                     }
                 }
                 Msg::WorkerDone => {
@@ -289,13 +364,19 @@ pub(super) fn host(
     let mut app = App {
         station,
         playback,
+        on_request,
         ui: None,
+        left: false,
     };
     if let Err(error) = event_loop.run_app_on_demand(&mut app) {
         // The tray is gone but the station is not: keep supervising until it ends.
         tracing::warn!(error = %error, "radio tray event loop failed; playback continues without it");
     }
+    let left = app.left;
     drop(app);
+    if left {
+        return Ok(());
+    }
     worker
         .join()
         .map_err(|_| anyhow!("radio runner thread panicked"))?

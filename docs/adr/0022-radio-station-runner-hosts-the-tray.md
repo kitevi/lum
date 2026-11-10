@@ -1,6 +1,6 @@
 # The Radio Station Runner Hosts a Tray Toggle
 
-Status: Accepted. Reverses the "no paused state" part of ADR-0010 and builds on the runners of ADR-0014.
+Status: Accepted. The single-item menu and "no Quit item" are superseded by ADR-0023. Reverses the "no paused state" part of ADR-0010 and builds on the runners of ADR-0014.
 
 ## Context
 
