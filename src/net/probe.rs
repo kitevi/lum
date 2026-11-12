@@ -2,6 +2,7 @@
 //! receive errors the interface counts meanwhile.
 
 use std::{
+    ffi::OsStr,
     io::Read as _,
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream},
     thread,
@@ -205,8 +206,8 @@ struct Counters {
 
 impl Counters {
     fn read(iface: &str) -> Option<Self> {
-        let networks = sysinfo::Networks::new_with_refreshed_list();
-        let data = networks.list().get(iface)?;
+        let networks = sysinfo::Networks::new_with_refreshed_list().ok()?;
+        let data = networks.get(OsStr::new(iface))?;
         Some(Self {
             packets: data.total_packets_received(),
             errors: data.total_errors_on_received(),

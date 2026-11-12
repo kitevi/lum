@@ -2,10 +2,10 @@
 name = "lum"
 version = "0.3.2"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.95"
 
 [build-dependencies]
-jiff = "0.2.37"
+jiff = "0.2.43"
 
 
 [workspace]
@@ -16,15 +16,15 @@ resolver = "3"
 anyhow = "1.0.104"
 directories = "6.0.0"
 dunce = "1.0.5"
-ureq = { version = "~3.5.0", default-features = false, features = ["rustls", "json", "multipart"] }
+ureq = { version = "~3.5.2", default-features = false, features = ["rustls", "json", "multipart"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 semver = "1.0.28"
-sha2 = "0.11.0"
-flate2 = "1.1.10"
+sha2 = "0.11.1"
+flate2 = "1.1.11"
 tar = "0.4.46"
-lzma-rust2 = { version = "0.16.5", default-features = false, features = ["std", "xz"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+lzma-rust2 = { version = "0.25.0", default-features = false, features = ["std", "xz"] }
+zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 fs_extra = "1.3.0"
 tempfile = "3.27.0"
 tracing = "0.1.44"
@@ -32,23 +32,23 @@ tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 volumecontrol = "0.1.4"
 which = "8.0.6"
-ignore = "0.4.33"
-jiff = "0.2.37"
-globset = "0.4.20"
-notify-rust = "4.18.1"
+ignore = "0.4.34"
+jiff = "0.2.43"
+globset = "0.4.21"
+notify-rust = "4.19.0"
 # The radio tray. The `ksni` backend is StatusNotifierItem over D-Bus, so Linux needs no GTK; the
 # default backend would make every lum command require libgtk-3 just to start (see ADR-0022).
 tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
 # Lets the tray kill the ffplay that the supervisor is blocked waiting on.
 shared_child = "1.1.2"
-sysinfo = { version = "0.39.6", default-features = false, features = ["system", "network"] }
+sysinfo = { version = "0.40.3", default-features = false, features = ["system", "network"] }
 fastrand = "2.5.0"
 rayon = "1.12.0"
 secrecy = { version = "0.10.3", features = ["serde"] }
 url = "2.5.8"
-usage = { package = "usage-rs", version = "6.12.0", features = ["completions"] }
-gix-credentials = { version = "0.41.0", default-features = false }
-gix-error = "0.4.0"
+usage-rs = { version = "7.3.0", features = ["completions"] }
+gix-credentials = { version = "0.42.1", default-features = false }
+gix-error = "0.5.2"
 
 # `lum net game -- <command>` keeps Ctrl+C, SIGTERM and SIGHUP from killing lum before it switches
 # game mode off. Already in the tree through shared_child; `lum net` is Linux and macOS only.
@@ -65,7 +65,7 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
-usage-parser = { package = "usage-lib", version = "6.12.0" }
+usage-parser = { package = "usage-lib", version = "7.3.0" }
 predicates = "3.1.4"
 tempfile = "3.27.0"
 

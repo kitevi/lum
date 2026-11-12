@@ -21,7 +21,7 @@ pub fn run(route_id: &str, operation: &str) -> Result<()> {
         std::io::stdin().lock(),
         std::io::stdout().lock(),
         gix_credentials::protocol::ContextOptions::default(),
-        |action, request| resolve(action, route_id, request).or_erased(),
+        |action, request| resolve(action, route_id, request).or_error(),
     );
 
     result.map_err(|_| {

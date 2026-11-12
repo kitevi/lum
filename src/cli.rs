@@ -9,7 +9,7 @@ const LONG_VERSION: &str = concat!(
     env!("LUM_BUILD_TIME_UTC")
 );
 
-#[derive(Debug, usage::Cli)]
+#[derive(Debug, usage_rs::Cli)]
 #[usage(
     bin = "lum",
     version = LONG_VERSION,
@@ -22,7 +22,7 @@ pub struct Cli {
     pub command: Commands,
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum Commands {
     /// Generate shell completions.
     #[usage(name = "__completions", hide)]
@@ -95,7 +95,7 @@ pub enum Commands {
 }
 
 /// Shells accepted by the hidden `__completions` command.
-#[derive(Debug, Clone, Copy, usage::ValueEnum)]
+#[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
 pub enum CompletionShell {
     Bash,
     Elvish,
@@ -104,7 +104,7 @@ pub enum CompletionShell {
     Zsh,
 }
 
-impl From<CompletionShell> for usage::complete::Shell {
+impl From<CompletionShell> for usage_rs::complete::Shell {
     fn from(shell: CompletionShell) -> Self {
         match shell {
             CompletionShell::Bash => Self::Bash,
@@ -116,7 +116,7 @@ impl From<CompletionShell> for usage::complete::Shell {
     }
 }
 
-#[derive(Debug, usage::Args, Clone)]
+#[derive(Debug, usage_rs::Args, Clone)]
 #[usage(
     after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio dron)\n  lum radio rand            Play a random station, never the current one\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
 )]
@@ -127,7 +127,7 @@ pub struct RadioArgs {
     pub arg: Option<String>,
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum BackupCommand {
     /// Backup and restore ~/.bio.
     Bio { code: Option<String> },
@@ -135,14 +135,14 @@ pub enum BackupCommand {
     Openemu { code: Option<String> },
 }
 
-#[derive(Debug, Clone, Copy, usage::ValueEnum)]
+#[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
 pub enum EnvShell {
     Posix,
     Fish,
     Powershell,
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
     Init {
@@ -171,7 +171,7 @@ pub enum EnvCommand {
     Path,
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum ToolsCommand {
     /// Install a managed tool.
     Install {
@@ -199,7 +199,7 @@ pub enum ToolsCommand {
     Version { tool: String },
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum AppsCommand {
     /// Install a managed macOS app.
     Install {
@@ -227,7 +227,7 @@ pub enum AppsCommand {
     Version { app: String },
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum ReposCommand {
     /// Scan a directory tree for Git repositories and report branch and sync status.
     Scan(ScanArgs),
@@ -238,7 +238,7 @@ pub enum ReposCommand {
     },
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum GitIdCommand {
     /// Print the path to the git identity config file.
     ConfigPath,
@@ -258,7 +258,7 @@ pub enum GitIdCommand {
     Paths,
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum MirrorCommand {
     /// Print the path to the mirror config file.
     ConfigPath,
@@ -293,7 +293,7 @@ pub enum MirrorCommand {
         cycles: Option<usize>,
     },
 }
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum YtCommand {
     /// Download audio from YouTube URL(s).
     Aud {
@@ -332,7 +332,7 @@ pub enum YtCommand {
     },
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum NetCommand {
     /// Force 100 Mb/s and shape downloads. Given a command or `gfn`, run it and switch back when it exits.
     Game {
@@ -343,7 +343,7 @@ pub enum NetCommand {
         #[usage(
             value_name = "COMMAND",
             double_dash = "automatic",
-            value_hint = usage::ValueHint::CommandWithArguments
+            value_hint = usage_rs::ValueHint::CommandWithArguments
         )]
         command: Vec<String>,
     },
@@ -362,7 +362,7 @@ pub enum NetCommand {
     },
 }
 
-#[derive(Debug, usage::Subcommands)]
+#[derive(Debug, usage_rs::Subcommands)]
 pub enum FontCommand {
     /// List managed fonts and local state.
     #[usage(visible_alias = "ls")]

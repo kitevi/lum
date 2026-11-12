@@ -32,6 +32,7 @@ mod root;
 mod wrap;
 
 use std::{
+    ffi::OsStr,
     fs,
     process::ExitStatus,
     thread,
@@ -201,7 +202,7 @@ fn status(platform: &dyn Platform) -> Result<()> {
         return Ok(());
     }
     let routed = platform.default_route();
-    let networks = sysinfo::Networks::new_with_refreshed_list();
+    let networks = sysinfo::Networks::new_with_refreshed_list().ok();
     for iface in wired {
         let route = if routed.as_deref() == Some(iface.name.as_str()) {
             ", default route"
@@ -209,8 +210,8 @@ fn status(platform: &dyn Platform) -> Result<()> {
             ""
         };
         let errors = networks
-            .list()
-            .get(&iface.name)
+            .as_ref()
+            .and_then(|networks| networks.get(OsStr::new(&iface.name)))
             .map(|data| {
                 format!(
                     ", {} receive errors in {} packets since boot",

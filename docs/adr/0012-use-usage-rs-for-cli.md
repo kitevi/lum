@@ -32,7 +32,8 @@ files keep working; it accepts the same five shells as before
   clap for argument parsing. Justification: usage-rs's spec/docs/completion
   tooling is the capability lum wants, and its derive API keeps lum's CLI
   declaration a mechanical rename away from clap's.
-- usage-rs 6.x requires Rust 1.91; lum's `rust-version` is set accordingly.
+- usage-rs requires Rust 1.91. lum's `rust-version` is the highest minimum
+  among its dependencies, which sysinfo 0.40 raised to 1.95.
 - Help layout and completion script contents change; accepted argv, exit
   codes, and output channels do not.
 - Lum gains the `__usage_spec__` endpoint that prints its usage spec (KDL),

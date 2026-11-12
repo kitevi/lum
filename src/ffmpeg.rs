@@ -241,7 +241,8 @@ fn extract_zip_ffmpeg(archive_data: &[u8], local: &Path) -> Result<()> {
 
     for index in 0..archive.len() {
         let mut file = archive.by_index(index)?;
-        let path = Path::new(file.name());
+        let name = file.name()?;
+        let path = Path::new(&*name);
         let filename = path.file_name().and_then(|n| n.to_str());
         let destination = match filename {
             Some("ffmpeg") | Some("ffmpeg.exe") => {
@@ -362,7 +363,7 @@ mod tests {
         let mut zip_data = Vec::new();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut zip_data));
-            let options = zip::write::FileOptions::<'_, ()>::default()
+            let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Stored);
             zip.start_file("ffmpeg", options).unwrap();
             zip.write_all(b"fake ffmpeg binary content").unwrap();

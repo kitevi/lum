@@ -223,7 +223,9 @@ fn process_alive_any(pid: u32, start_time: Option<u64>) -> bool {
 
 fn kill_pid_any(pid: u32, start_time: Option<u64>) {
     let pid = Pid::from_u32(pid);
-    let mut system = System::new_all();
+    let Ok(mut system) = System::new_all() else {
+        return;
+    };
     system.refresh_processes(ProcessesToUpdate::All, true);
 
     let Some(process) = system.process(pid) else {
@@ -277,7 +279,7 @@ fn with_ffplay_process<R>(
 
 fn with_process<R>(pid: u32, f: impl FnOnce(&sysinfo::Process) -> R) -> Option<R> {
     let pid = Pid::from_u32(pid);
-    let mut system = System::new();
+    let mut system = System::new().ok()?;
     system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
     system.process(pid).map(f)
 }

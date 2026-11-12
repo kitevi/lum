@@ -53,7 +53,7 @@ fn extract_ttf_files(spec: &FontSpec, zip_path: &Path, dest: &Path) -> Result<()
     let mut installed = 0u32;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_owned();
+        let name = entry.name()?.into_owned();
 
         // Skip directories and non-TTF files
         if entry.is_dir() || !name.to_ascii_lowercase().ends_with(".ttf") {
