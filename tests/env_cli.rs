@@ -32,7 +32,7 @@ fn env_set_writes_owner_only_state_file() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["env", "set", "tinyfish", "secret-value"])
+        .args(["env", "set", "openrouter", "secret-value"])
         .assert()
         .success();
 
