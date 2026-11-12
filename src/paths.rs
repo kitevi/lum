@@ -108,6 +108,11 @@ pub(crate) fn yt_deps_dir() -> Result<PathBuf> {
     data_dir("deps")
 }
 
+/// What `lum net game` changed, so `lum net normal` can undo exactly that.
+pub(crate) fn net_game_state_file() -> Result<PathBuf> {
+    state_dir("net-game.json")
+}
+
 pub(crate) fn log_dir() -> Result<PathBuf> {
     state_dir("logs")
 }

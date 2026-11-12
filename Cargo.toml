@@ -41,7 +41,7 @@ notify-rust = "4.18.1"
 tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
 # Lets the tray kill the ffplay that the supervisor is blocked waiting on.
 shared_child = "1.1.2"
-sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "network"] }
 fastrand = "2.5.0"
 rayon = "1.12.0"
 secrecy = { version = "0.10.3", features = ["serde"] }
@@ -49,6 +49,11 @@ url = "2.5.8"
 usage = { package = "usage-rs", version = "6.12.0", features = ["completions"] }
 gix-credentials = { version = "0.41.0", default-features = false }
 gix-error = "0.4.0"
+
+# `lum net game -- <command>` keeps Ctrl+C, SIGTERM and SIGHUP from killing lum before it switches
+# game mode off. Already in the tree through shared_child; `lum net` is Linux and macOS only.
+[target.'cfg(unix)'.dependencies]
+signal-hook = { version = "0.4.6", default-features = false }
 
 # Windows and macOS need a native event loop on the tray's thread; the Linux backend runs its own.
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
