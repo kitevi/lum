@@ -1,7 +1,8 @@
 use assert_cmd::Command;
+use predicates::prelude::*;
 
 #[test]
-fn backup_is_a_subcommand_with_bio_and_openemu_targets() {
+fn backup_is_a_subcommand_with_only_a_bio_target() {
     Command::cargo_bin("lum")
         .unwrap()
         .args(["backup", "--help"])
@@ -9,7 +10,7 @@ fn backup_is_a_subcommand_with_bio_and_openemu_targets() {
         .success()
         .stdout(predicates::str::contains("Backup and restore"))
         .stdout(predicates::str::contains("bio"))
-        .stdout(predicates::str::contains("openemu"));
+        .stdout(predicates::str::contains("openemu").not());
 }
 
 #[test]
@@ -23,17 +24,4 @@ fn backup_bio_reports_missing_source_directory() {
         .assert()
         .failure()
         .stderr(predicates::str::contains("bio directory not found"));
-}
-
-#[cfg(not(target_os = "macos"))]
-#[test]
-fn backup_openemu_reports_unsupported_os() {
-    Command::cargo_bin("lum")
-        .unwrap()
-        .args(["backup", "openemu"])
-        .assert()
-        .failure()
-        .stderr(predicates::str::contains(
-            "openemu backup is only supported",
-        ));
 }

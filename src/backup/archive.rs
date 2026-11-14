@@ -13,7 +13,7 @@ use super::target::{BackupTarget, GLOBAL_EXCLUDE_GLOBS};
 const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
 
 pub(crate) fn create_tar_gz(target: BackupTarget, home: &Path, output: &Path) -> Result<()> {
-    let exclude_set = exclude_set(target)?;
+    let exclude_set = exclude_set()?;
     let target_path = target.target_path(home);
     let tar_gz =
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
@@ -153,9 +153,9 @@ fn verify_gzip_magic(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn exclude_set(target: BackupTarget) -> Result<GlobSet> {
+fn exclude_set() -> Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
-    for pattern in GLOBAL_EXCLUDE_GLOBS.iter().chain(target.excludes.iter()) {
+    for pattern in GLOBAL_EXCLUDE_GLOBS {
         add_pattern(&mut builder, pattern)?;
     }
     builder.build().context("failed to build exclude glob set")

@@ -1,9 +1,8 @@
 # Backup
 
-`lum backup` backs up and restores two hardcoded personal data targets:
+`lum backup` backs up and restores one hardcoded personal data target:
 
 - `bio`: `~/.bio` on macOS and Linux
-- `openemu`: `~/Library/Application Support/OpenEmu` on macOS
 
 Running `lum backup <target>` creates a `.tar.gz` archive, uploads it to the hardcoded x0.at file host, downloads it back, and verifies that the uploaded file is a valid archive containing the target path.
 

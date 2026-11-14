@@ -25,7 +25,6 @@ pub(crate) struct BackupTarget {
     pub(crate) path: &'static str,
     pub(crate) allowed_os: &'static [&'static str],
     pub(crate) backup_prefix: &'static str,
-    pub(crate) excludes: &'static [&'static str],
 }
 
 pub(crate) const BIO: BackupTarget = BackupTarget {
@@ -33,18 +32,6 @@ pub(crate) const BIO: BackupTarget = BackupTarget {
     path: ".bio",
     allowed_os: &["macos", "linux"],
     backup_prefix: ".bio.backup-",
-    excludes: &[],
-};
-
-pub(crate) const OPENEMU: BackupTarget = BackupTarget {
-    name: "openemu",
-    path: "Library/Application Support/OpenEmu",
-    allowed_os: &["macos"],
-    backup_prefix: ".openemu.backup-",
-    excludes: &[
-        "Library/Application Support/OpenEmu/Cores",
-        "Library/Application Support/OpenEmu/openvgdb.sqlite",
-    ],
 };
 
 impl BackupTarget {
@@ -64,5 +51,26 @@ impl BackupTarget {
 
     pub(crate) fn target_path(self, home: &std::path::Path) -> PathBuf {
         home.join(self.path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn targets_refuse_other_operating_systems() {
+        let target = BackupTarget {
+            allowed_os: &["plan9"],
+            ..BIO
+        };
+
+        let error = target.ensure_current_os_allowed().unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains(r#"bio backup is only supported on ["plan9"]"#)
+        );
     }
 }

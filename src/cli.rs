@@ -131,8 +131,6 @@ pub struct RadioArgs {
 pub enum BackupCommand {
     /// Backup and restore ~/.bio.
     Bio { code: Option<String> },
-    /// Backup and restore OpenEmu data.
-    Openemu { code: Option<String> },
 }
 
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
