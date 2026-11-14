@@ -131,6 +131,8 @@ pub struct RadioArgs {
 pub enum BackupCommand {
     /// Backup and restore ~/.bio.
     Bio { code: Option<String> },
+    /// Backup and restore ~/ROMs: ROMs and the saves mGBA keeps beside them.
+    Roms { code: Option<String> },
 }
 
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]

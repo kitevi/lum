@@ -9,6 +9,7 @@ use crate::cli::BackupCommand;
 pub fn run(command: BackupCommand) -> Result<()> {
     match command {
         BackupCommand::Bio { code } => run_target(target::BIO, code),
+        BackupCommand::Roms { code } => run_target(target::ROMS, code),
     }
 }
 

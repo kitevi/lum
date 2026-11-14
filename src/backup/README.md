@@ -1,8 +1,9 @@
 # Backup
 
-`lum backup` backs up and restores one hardcoded personal data target:
+`lum backup` backs up and restores hardcoded personal data targets:
 
 - `bio`: `~/.bio` on macOS and Linux
+- `roms`: `~/ROMs` on macOS, Linux and Windows. Keep ROMs there: mGBA writes battery saves (`.sav`) and save states (`.ss0`–`.ss9`) beside each ROM, so one backup carries both. Quit mGBA first; it flushes saves to disk on exit. The Windows path has not run on real hardware.
 
 Running `lum backup <target>` creates a `.tar.gz` archive, uploads it to the hardcoded x0.at file host, downloads it back, and verifies that the uploaded file is a valid archive containing the target path.
 

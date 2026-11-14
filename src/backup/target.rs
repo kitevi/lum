@@ -34,6 +34,14 @@ pub(crate) const BIO: BackupTarget = BackupTarget {
     backup_prefix: ".bio.backup-",
 };
 
+/// ROMs, with the saves and save states mGBA keeps beside each ROM.
+pub(crate) const ROMS: BackupTarget = BackupTarget {
+    name: "roms",
+    path: "ROMs",
+    allowed_os: &["macos", "linux", "windows"],
+    backup_prefix: ".roms.backup-",
+};
+
 impl BackupTarget {
     pub(crate) fn ensure_current_os_allowed(self) -> Result<()> {
         let current = std::env::consts::OS;

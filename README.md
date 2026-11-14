@@ -228,6 +228,7 @@ Notes:
 - lum does not update an app, or change its settings, while it is running. Quit it first.
 - On Linux the AppImage is unpacked, so it runs without FUSE.
 - `lum apps uninstall` removes the app and its launcher, and keeps its settings and saves.
+- Keep ROMs in `~/ROMs`. mGBA saves beside each ROM, so `lum backup roms` backs up ROMs and saves together, and `lum backup roms <code>` restores them on another machine. Quit mGBA first.
 
 ## Other commands
 
