@@ -63,8 +63,8 @@ pub(crate) fn local_status(spec: &AppSpec, build: &Build) -> Result<LocalStatus>
 /// Where this build is installed: the bundle name on macOS, the app name elsewhere.
 pub(crate) fn app_path(spec: &AppSpec, build: &Build) -> Result<PathBuf> {
     let name = match build.package {
-        Package::DiskImage { bundle } => bundle,
-        Package::AppImage | Package::SevenZip { .. } => spec.name,
+        Package::Bundle { bundle } => bundle,
+        Package::AppImage | Package::Folder { .. } => spec.name,
     };
     Ok(crate::paths::apps_dir()?.join(name))
 }
@@ -72,7 +72,7 @@ pub(crate) fn app_path(spec: &AppSpec, build: &Build) -> Result<PathBuf> {
 /// Copies of a macOS bundle outside lum's install root. With two copies of one
 /// bundle Launch Services may open either, so lum refuses to install beside one.
 pub(crate) fn foreign_copies(spec: &AppSpec, build: &Build) -> Result<Vec<PathBuf>> {
-    let Package::DiskImage { bundle } = build.package else {
+    let Package::Bundle { bundle } = build.package else {
         return Ok(Vec::new());
     };
     let managed = app_path(spec, build)?;

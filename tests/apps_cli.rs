@@ -9,43 +9,62 @@ use std::{
 
 use assert_cmd::Command;
 use backhand::{FilesystemCompressor, FilesystemWriter, NodeHeader, compression::Compressor};
+use predicates::prelude::*;
 use predicates::str::contains;
 use tempfile::TempDir;
 
-const DESKTOP_ENTRY: &str = "[Desktop Entry]\nType=Application\nName=mGBA\nIcon=io.mgba.mGBA\nTryExec=mgba-qt\nExec=mgba-qt %f\nMimeType=application/x-gba-rom;\n";
+/// What an upstream AppImage holds, as far as lum cares.
+struct Fixture {
+    file: &'static str,
+    program: &'static str,
+    desktop: &'static str,
+    entry: &'static str,
+    icon: &'static str,
+}
 
-/// A stand-in for mGBA's AppImage: an ELF runtime followed by a gzip SquashFS
-/// image laid out like the real one.
-fn write_fixture_appimage(home: &TempDir) -> PathBuf {
+const MGBA: Fixture = Fixture {
+    file: "mGBA-test-appimage-x64.appimage",
+    program: "mgba-qt",
+    desktop: "io.mgba.mGBA.desktop",
+    entry: "[Desktop Entry]\nType=Application\nName=mGBA\nIcon=io.mgba.mGBA\nTryExec=mgba-qt\nExec=mgba-qt %f\nMimeType=application/x-gba-rom;\n",
+    icon: "io.mgba.mGBA.png",
+};
+
+const SNES9X: Fixture = Fixture {
+    file: "Snes9x-test-x86_64.AppImage",
+    program: "snes9x-gtk",
+    desktop: "snes9x-gtk.desktop",
+    entry: "[Desktop Entry]\nName=Snes9x\nType=Application\nMimeType=application/vnd.nintendo.snes.rom;application/x-snes-rom;\nExec=snes9x-gtk %F\nIcon=snes9x\n",
+    icon: "snes9x.png",
+};
+
+/// A stand-in for an upstream AppImage: an ELF runtime followed by a gzip
+/// SquashFS image laid out like the real ones, with AppRun and the desktop
+/// entry as symlinks.
+fn write_appimage(home: &TempDir, fixture: &Fixture) -> PathBuf {
     let dir = NodeHeader::new(0o755, 0, 0, 0);
     let file = NodeHeader::new(0o644, 0, 0, 0);
+    let program = format!("usr/bin/{}", fixture.program);
+    let desktop = format!("usr/share/applications/{}", fixture.desktop);
     let mut image = FilesystemWriter::default();
     image.set_compressor(FilesystemCompressor::new(Compressor::Gzip, None).unwrap());
     image.push_dir_all("usr/bin", dir).unwrap();
     image.push_dir_all("usr/share/applications", dir).unwrap();
     image
-        .push_file(Cursor::new(b"#!/bin/sh\n".to_vec()), "usr/bin/mgba-qt", dir)
+        .push_file(Cursor::new(b"#!/bin/sh\n".to_vec()), &program, dir)
         .unwrap();
     image
         .push_file(
-            Cursor::new(DESKTOP_ENTRY.as_bytes().to_vec()),
-            "usr/share/applications/io.mgba.mGBA.desktop",
+            Cursor::new(fixture.entry.as_bytes().to_vec()),
+            &desktop,
             file,
         )
         .unwrap();
     image
-        .push_file(Cursor::new(b"png".to_vec()), "io.mgba.mGBA.png", file)
+        .push_file(Cursor::new(b"png".to_vec()), fixture.icon, file)
         .unwrap();
-    image
-        .push_symlink("usr/bin/mgba-qt", "AppRun", dir)
-        .unwrap();
-    image
-        .push_symlink(
-            "usr/share/applications/io.mgba.mGBA.desktop",
-            "io.mgba.mGBA.desktop",
-            dir,
-        )
-        .unwrap();
+    image.push_symlink(&program, "AppRun", dir).unwrap();
+    image.push_symlink(&desktop, fixture.desktop, dir).unwrap();
     let mut squashfs = Cursor::new(Vec::new());
     image.write(&mut squashfs).unwrap();
 
@@ -55,9 +74,13 @@ fn write_fixture_appimage(home: &TempDir) -> PathBuf {
     appimage[..6].copy_from_slice(b"\x7fELF\x02\x01");
     appimage[0x28..0x30].copy_from_slice(&64u64.to_le_bytes());
     appimage.extend(squashfs.into_inner());
-    let path = home.path().join("mGBA-test-appimage-x64.appimage");
+    let path = home.path().join(fixture.file);
     fs::write(&path, appimage).unwrap();
     path
+}
+
+fn write_fixture_appimage(home: &TempDir) -> PathBuf {
+    write_appimage(home, &MGBA)
 }
 
 fn lum(home: &TempDir) -> Command {
@@ -66,15 +89,34 @@ fn lum(home: &TempDir) -> Command {
         .env("XDG_DATA_HOME", home.path().join("data"))
         .env("XDG_STATE_HOME", home.path().join("state"))
         .env("LUM_APPS_DIR", home.path().join("apps"))
-        // An mGBA running on the machine that runs the tests must not count.
+        // Apps running on the machine that runs the tests must not count.
         .env("LUM_APPS_TEST_PROCESS_MGBA", "lum-test-absent")
-        .env_remove("LUM_APPS_TEST_ARTIFACT_MGBA");
+        .env("LUM_APPS_TEST_PROCESS_SNES9X", "lum-test-absent")
+        .env_remove("LUM_APPS_TEST_ARTIFACT_MGBA")
+        .env_remove("LUM_APPS_TEST_ARTIFACT_SNES9X");
     cmd
 }
 
 fn lum_with_fixture(home: &TempDir, appimage: &Path) -> Command {
     let mut cmd = lum(home);
     cmd.env("LUM_APPS_TEST_ARTIFACT_MGBA", appimage);
+    cmd
+}
+
+/// lum with an AppImage for every app, for commands that walk the catalog.
+/// Each fixture is written once per test, so its checksum stays put.
+fn lum_with_catalog(home: &TempDir) -> Command {
+    let mut cmd = lum(home);
+    for (variable, fixture) in [
+        ("LUM_APPS_TEST_ARTIFACT_MGBA", &MGBA),
+        ("LUM_APPS_TEST_ARTIFACT_SNES9X", &SNES9X),
+    ] {
+        let path = home.path().join(fixture.file);
+        if !path.exists() {
+            write_appimage(home, fixture);
+        }
+        cmd.env(variable, path);
+    }
     cmd
 }
 
@@ -144,7 +186,9 @@ fn ls_lists_the_catalog_with_settings_state() {
         .stdout(contains("mgba"))
         .stdout(contains("not installed"))
         .stdout(contains("1 to apply"))
-        .stdout(contains("Game Boy Advance emulator"));
+        .stdout(contains("Game Boy Advance emulator"))
+        .stdout(contains("snes9x"))
+        .stdout(contains("Super Nintendo emulator"));
 }
 
 #[test]
@@ -429,17 +473,18 @@ fn update_reapplies_settings_when_up_to_date() {
 #[test]
 fn sync_dry_run_changes_nothing() {
     let home = TempDir::new().unwrap();
-    let appimage = write_fixture_appimage(&home);
 
-    lum_with_fixture(&home, &appimage)
+    lum_with_catalog(&home)
         .args(["apps", "sync", "--dry-run"])
         .assert()
         .success()
         .stdout(contains("\u{2022} mgba: would install test"))
         .stdout(contains("\u{2022} mgba: would set 1 setting in"))
-        .stdout(contains("[ports.qt] updateAutoCheck: (unset) -> 0"));
+        .stdout(contains("[ports.qt] updateAutoCheck: (unset) -> 0"))
+        .stdout(contains("\u{2022} snes9x: would install test"));
 
     assert!(!app_dir(&home).exists());
+    assert!(!home.path().join("apps").join("snes9x").exists());
     assert!(!state_file(&home).exists());
     assert!(!config_file(&home).exists());
     assert!(!desktop_entry(&home).exists());
@@ -448,37 +493,38 @@ fn sync_dry_run_changes_nothing() {
 #[test]
 fn sync_installs_then_repairs_drifted_settings() {
     let home = TempDir::new().unwrap();
-    let appimage = write_fixture_appimage(&home);
 
-    lum_with_fixture(&home, &appimage)
+    lum_with_catalog(&home)
         .args(["apps", "sync"])
         .assert()
         .success()
         .stdout(contains("\u{2022} mgba: installing test... done"))
         .stdout(contains("\u{2022} mgba: set 1 setting in"))
+        .stdout(contains("\u{2022} snes9x: installing test... done"))
         .stdout(contains(
-            "Summary: 1 installed, 0 updated, 0 up to date, 1 configured, 0 skipped",
+            "Summary: 2 installed, 0 updated, 0 up to date, 1 configured, 0 skipped",
         ));
 
     write_config(&home, "[ports.qt]\nupdateAutoCheck=1\nfastForwardRatio=3\n");
-    lum_with_fixture(&home, &appimage)
+    lum_with_catalog(&home)
         .args(["apps", "sync"])
         .assert()
         .success()
         .stdout(contains("\u{2022} mgba: up to date (test)"))
+        .stdout(contains("\u{2022} snes9x: up to date (test)"))
         .stdout(contains(
-            "Summary: 0 installed, 0 updated, 1 up to date, 1 configured, 0 skipped",
+            "Summary: 0 installed, 0 updated, 2 up to date, 1 configured, 0 skipped",
         ));
     let config = fs::read_to_string(config_file(&home)).unwrap();
     assert!(config.contains("updateAutoCheck=0\n"), "{config}");
     assert!(config.contains("fastForwardRatio=3\n"), "{config}");
 
-    lum_with_fixture(&home, &appimage)
+    lum_with_catalog(&home)
         .args(["apps", "sync"])
         .assert()
         .success()
         .stdout(contains(
-            "Summary: 0 installed, 0 updated, 1 up to date, 0 configured, 0 skipped",
+            "Summary: 0 installed, 0 updated, 2 up to date, 0 configured, 0 skipped",
         ));
 }
 
@@ -488,17 +534,17 @@ fn sync_skips_an_unmanaged_folder_without_touching_it() {
     let app = app_dir(&home);
     fs::create_dir_all(&app).unwrap();
     fs::write(app.join("marker"), "manual").unwrap();
-    let appimage = write_fixture_appimage(&home);
 
-    lum_with_fixture(&home, &appimage)
+    lum_with_catalog(&home)
         .args(["apps", "sync"])
         .assert()
         .success()
         .stdout(contains("--force"))
-        .stdout(contains("1 skipped"));
+        .stdout(contains(
+            "Summary: 1 installed, 0 updated, 0 up to date, 0 configured, 1 skipped",
+        ));
 
     assert_eq!(fs::read_to_string(app.join("marker")).unwrap(), "manual");
-    assert!(!state_file(&home).exists());
 }
 
 #[test]
@@ -552,4 +598,64 @@ fn version_shows_installed_and_latest() {
         .success()
         .stdout(contains("Installed: unknown"))
         .stdout(contains("Latest:    test"));
+}
+
+#[test]
+fn snes9x_installs_its_appimage_with_its_own_desktop_entry() {
+    let home = TempDir::new().unwrap();
+    let appimage = write_appimage(&home, &SNES9X);
+
+    lum(&home)
+        .env("LUM_APPS_TEST_ARTIFACT_SNES9X", &appimage)
+        .args(["apps", "install", "snes9x"])
+        .assert()
+        .success()
+        .stdout(contains("\u{2713} Installed snes9x test"))
+        .stdout(contains("Note: Snes9x needs glibmm 2.4 from the system"))
+        // On Linux snes9x saves beside each ROM already; lum sets nothing.
+        .stdout(contains("Set ").not());
+
+    let app = home.path().join("apps").join("snes9x");
+    assert!(app.join("usr/bin/snes9x-gtk").is_file());
+    let entry = fs::read_to_string(
+        home.path()
+            .join("data")
+            .join("applications")
+            .join("lum-snes9x.desktop"),
+    )
+    .unwrap();
+    assert!(
+        entry.contains(&format!("\nExec={} %F\n", app.join("AppRun").display())),
+        "{entry}"
+    );
+    assert!(
+        entry.contains(&format!("\nIcon={}\n", app.join("snes9x.png").display())),
+        "{entry}"
+    );
+    assert!(
+        entry.contains("application/vnd.nintendo.snes.rom;"),
+        "{entry}"
+    );
+
+    lum(&home)
+        .args(["apps", "status", "snes9x"])
+        .assert()
+        .success()
+        .stdout(contains("Managed:           yes"))
+        .stdout(contains("Settings").not());
+}
+
+#[test]
+fn snes9x_refuses_while_it_runs() {
+    let home = TempDir::new().unwrap();
+    let appimage = write_appimage(&home, &SNES9X);
+    let exe = std::env::current_exe().unwrap();
+
+    lum(&home)
+        .env("LUM_APPS_TEST_ARTIFACT_SNES9X", &appimage)
+        .env("LUM_APPS_TEST_PROCESS_SNES9X", exe.file_name().unwrap())
+        .args(["apps", "install", "snes9x"])
+        .assert()
+        .failure()
+        .stderr(contains("snes9x is running; quit it and try again"));
 }

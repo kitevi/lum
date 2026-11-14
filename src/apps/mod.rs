@@ -35,8 +35,8 @@ fn list() -> Result<()> {
         "APP", "STATE", "VERSION", "SETTINGS"
     );
     for spec in catalog::CATALOG {
-        let (state, version) = match spec.build() {
-            None => ("unavailable", None),
+        let (state, version, settings) = match spec.build() {
+            None => ("unavailable", None, None),
             Some(build) => {
                 let status = state::local_status(spec, build)?;
                 let state = match (status.managed, status.exists) {
@@ -44,13 +44,15 @@ fn list() -> Result<()> {
                     (false, true) => "unmanaged",
                     _ => "not installed",
                 };
-                (state, status.installed_version().map(str::to_owned))
+                let settings = settings_status(spec, build)?.map(|status| describe(&status));
+                (
+                    state,
+                    status.installed_version().map(str::to_owned),
+                    settings,
+                )
             }
         };
-        let settings = match &spec.settings {
-            Some(settings) => describe(&settings::status(settings)?),
-            None => "-".into(),
-        };
+        let settings = settings.unwrap_or_else(|| "-".into());
         println!(
             "{:<10} {:<14} {:<10} {:<12} {}",
             spec.name,
@@ -91,13 +93,12 @@ fn status_cmd(app: &str) -> Result<()> {
             if !foreign.is_empty() {
                 field("Foreign copies:", &join_paths(&foreign));
             }
+            if let Some(status) = settings_status(spec, build)? {
+                field("Settings file:", &status.file.display().to_string());
+                field("Settings:", &describe(&status));
+                print_drift(&status, "  ");
+            }
         }
-    }
-    if let Some(settings) = &spec.settings {
-        let status = settings::status(settings)?;
-        field("Settings file:", &status.file.display().to_string());
-        field("Settings:", &describe(&status));
-        print_drift(&status, "  ");
     }
     Ok(())
 }
@@ -131,6 +132,7 @@ fn install_cmd(app: &str, force: bool) -> Result<()> {
         installed.installed_version,
         installed.path.display()
     );
+    print_note(build);
     apply_settings(spec, build)
 }
 
@@ -211,14 +213,14 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
                 if current.is_some() {
                     updated += 1;
                 } else {
+                    print_note(build);
                     installed += 1;
                 }
             }
         }
-        let Some(settings) = &spec.settings else {
+        let Some(settings) = settings_status(spec, build)? else {
             continue;
         };
-        let settings = settings::status(settings)?;
         if settings.drift.is_empty() {
             continue;
         }
@@ -268,24 +270,42 @@ fn uninstall_cmd(app: &str) -> Result<()> {
         bail!("{} is not installed by lum", spec.name);
     }
     ensure_not_running(spec, build)?;
+    let settings_file = build
+        .settings
+        .map(|settings| (settings.file)(&status.path))
+        .transpose()?;
     install::uninstall(spec, build)?;
     println!(
         "\u{2713} Uninstalled {} from {}",
         spec.name,
         status.path.display()
     );
-    if let Some(settings) = &spec.settings {
-        println!("  Its settings stay in {}", (settings.file)()?.display());
+    match settings_file {
+        Some(file) if file.starts_with(&status.path) => {
+            println!("  Its settings were in that folder and went with it");
+        }
+        Some(file) => println!("  Its settings stay in {}", file.display()),
+        None => {}
     }
     Ok(())
 }
 
+/// The owned settings of a build, read where the app is installed.
+fn settings_status(spec: &AppSpec, build: &Build) -> Result<Option<SettingsStatus>> {
+    let Some(settings) = build.settings else {
+        return Ok(None);
+    };
+    Ok(Some(settings::status(
+        settings,
+        &state::app_path(spec, build)?,
+    )?))
+}
+
 /// Bring the app's owned settings to lum's values.
 fn apply_settings(spec: &AppSpec, build: &Build) -> Result<()> {
-    let Some(settings) = &spec.settings else {
+    let Some(status) = settings_status(spec, build)? else {
         return Ok(());
     };
-    let status = settings::status(settings)?;
     if status.drift.is_empty() {
         return Ok(());
     }
@@ -358,6 +378,12 @@ fn remove_file_if_present(path: &Path) -> Result<()> {
     }
 }
 
+fn print_note(build: &Build) {
+    if let Some(note) = build.note {
+        println!("Note: {note}");
+    }
+}
+
 fn describe(status: &SettingsStatus) -> String {
     match status.drift.len() {
         0 => "in sync".into(),
@@ -373,7 +399,7 @@ fn print_drift(status: &SettingsStatus, indent: &str) {
             setting.section,
             setting.key,
             drift.current.as_deref().unwrap_or("(unset)"),
-            setting.value
+            drift.wanted
         );
     }
 }

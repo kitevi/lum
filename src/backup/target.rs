@@ -37,7 +37,7 @@ pub(crate) const BIO: BackupTarget = BackupTarget {
 /// ROMs, with the saves and save states mGBA keeps beside each ROM.
 pub(crate) const ROMS: BackupTarget = BackupTarget {
     name: "roms",
-    path: "ROMs",
+    path: crate::paths::ROMS_FOLDER,
     allowed_os: &["macos", "linux", "windows"],
     backup_prefix: ".roms.backup-",
 };

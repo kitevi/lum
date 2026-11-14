@@ -15,10 +15,8 @@ use super::catalog::{AppSpec, Package};
 pub(crate) fn path(spec: &AppSpec, package: &Package) -> Result<Option<PathBuf>> {
     Ok(match package {
         Package::AppImage => Some(applications_dir()?.join(format!("lum-{}.desktop", spec.name))),
-        Package::SevenZip { program, .. } => {
-            Some(start_menu_dir()?.join(format!("{}.lnk", program.trim_end_matches(".exe"))))
-        }
-        Package::DiskImage { .. } => None,
+        Package::Folder { .. } => Some(start_menu_dir()?.join(format!("{}.lnk", spec.title))),
+        Package::Bundle { .. } => None,
     })
 }
 
@@ -35,10 +33,10 @@ pub(crate) fn install(spec: &AppSpec, package: &Package, app: &Path) -> Result<(
             fs::write(&launcher, desktop_entry(app)?)?;
             refresh_desktop_database();
         }
-        Package::SevenZip { program, .. } => {
+        Package::Folder { program, .. } => {
             start_menu_shortcut(&launcher, &app.join(program), app)?;
         }
-        Package::DiskImage { .. } => {}
+        Package::Bundle { .. } => {}
     }
     Ok(())
 }

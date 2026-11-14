@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. ADR-0027 changes how owned settings are written.
 
 ## Context
 

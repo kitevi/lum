@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. ADR-0028 extends its package kinds.
 
 ## Context
 

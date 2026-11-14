@@ -148,6 +148,14 @@ fn base_dirs() -> Result<BaseDirs> {
     BaseDirs::new().context("failed to determine platform directories")
 }
 
+/// The ROMs folder in the home folder. `lum backup roms` backs it up, and lum
+/// points app saves at it where they would otherwise land elsewhere.
+pub(crate) const ROMS_FOLDER: &str = "ROMs";
+
+pub(crate) fn roms_dir() -> Result<PathBuf> {
+    home_path(ROMS_FOLDER)
+}
+
 /// Resolve home directory or bail.
 pub(crate) fn home_dir() -> Result<PathBuf> {
     UserDirs::new()

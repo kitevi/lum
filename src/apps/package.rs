@@ -12,6 +12,31 @@ use backhand::{FilesystemReader, InnerNode};
 
 use super::catalog::Package;
 
+/// How a bundle or program folder is packed, from its asset's file name.
+enum Archive {
+    DiskImage,
+    Zip,
+    SevenZip,
+}
+
+impl Archive {
+    fn of(asset: &Path) -> Result<Self> {
+        let name = asset
+            .file_name()
+            .map(|name| name.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        Ok(if name.ends_with(".dmg") {
+            Self::DiskImage
+        } else if name.ends_with(".zip") {
+            Self::Zip
+        } else if name.ends_with(".7z") {
+            Self::SevenZip
+        } else {
+            bail!("{name} is not a disk image, zip or 7z archive")
+        })
+    }
+}
+
 /// Unpack `asset` inside `scratch` and return the app folder (or macOS bundle),
 /// ready to move into place.
 pub(crate) fn unpack(package: &Package, asset: &Path, scratch: &Path) -> Result<PathBuf> {
@@ -20,13 +45,10 @@ pub(crate) fn unpack(package: &Package, asset: &Path, scratch: &Path) -> Result<
             let app = scratch.join("app");
             unpack_appimage(asset, &app).map(|()| app)
         }
-        Package::DiskImage { bundle } => {
-            let app = scratch.join(bundle);
-            copy_from_disk_image(asset, bundle, &app).map(|()| app)
-        }
-        Package::SevenZip { remove, .. } => {
-            unpack_seven_zip(asset, &scratch.join("extracted"), remove)
-        }
+        Package::Bundle { bundle } => unpack_bundle(asset, bundle, scratch),
+        Package::Folder {
+            program, remove, ..
+        } => unpack_folder(asset, program, remove, scratch),
     };
     unpacked.with_context(|| format!("failed to unpack {}", asset.display()))
 }
@@ -126,6 +148,54 @@ fn symlink(_: &Path, link: &Path) -> io::Result<()> {
     ))
 }
 
+/// A macOS bundle, copied out of a disk image or extracted from an archive that
+/// holds it at its root.
+fn unpack_bundle(asset: &Path, bundle: &str, scratch: &Path) -> Result<PathBuf> {
+    if let Archive::DiskImage = Archive::of(asset)? {
+        let app = scratch.join(bundle);
+        copy_from_disk_image(asset, bundle, &app)?;
+        return Ok(app);
+    }
+    let extracted = scratch.join("extracted");
+    extract(asset, &extracted)?;
+    let app = extracted.join(bundle);
+    if !app.is_dir() {
+        bail!("{bundle} is not in the archive");
+    }
+    Ok(app)
+}
+
+/// A program folder: the archive's only folder, or its root when it holds the
+/// program's files directly. The files in `remove` are dropped.
+fn unpack_folder(asset: &Path, program: &str, remove: &[&str], scratch: &Path) -> Result<PathBuf> {
+    let extracted = scratch.join("extracted");
+    extract(asset, &extracted)?;
+    let entries = fs::read_dir(&extracted)?.collect::<io::Result<Vec<_>>>()?;
+    let app = match entries.as_slice() {
+        [entry] if entry.file_type()?.is_dir() => entry.path(),
+        _ => extracted,
+    };
+    for name in remove {
+        super::remove_file_if_present(&app.join(name))?;
+    }
+    if !app.join(program).is_file() {
+        bail!("{program} is not in the archive");
+    }
+    Ok(app)
+}
+
+/// Extract a zip or 7z archive. Both crates refuse entries that would land
+/// outside `dest`, and zip restores the symlinks and modes of a bundle.
+fn extract(archive: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest)?;
+    match Archive::of(archive)? {
+        Archive::Zip => zip::ZipArchive::new(fs::File::open(archive)?)?.extract(dest)?,
+        Archive::SevenZip => sevenz_rust2::decompress_file(archive, dest)?,
+        Archive::DiskImage => bail!("a disk image holds a macOS bundle, not a program folder"),
+    }
+    Ok(())
+}
+
 /// Copy `bundle` out of a disk image with the system's hdiutil and ditto: no
 /// maintained Rust crate reads HFS+, and ditto keeps a bundle's symlinks,
 /// permissions and extended attributes intact.
@@ -162,29 +232,6 @@ fn copy_from_disk_image(image: &Path, bundle: &str, dest: &Path) -> Result<()> {
         tracing::warn!(error = %error, mount = %mount.path().display(), "failed to detach disk image");
     }
     copied
-}
-
-/// Unpack a 7z archive holding one top-level folder, minus the files in `remove`.
-fn unpack_seven_zip(archive: &Path, dest: &Path, remove: &[&str]) -> Result<PathBuf> {
-    sevenz_rust2::decompress_file(archive, dest)?;
-    let entries = fs::read_dir(dest)?.collect::<io::Result<Vec<_>>>()?;
-    let [entry] = entries.as_slice() else {
-        bail!(
-            "expected one top-level folder, found {} entries",
-            entries.len()
-        );
-    };
-    if !entry.file_type()?.is_dir() {
-        bail!(
-            "expected one top-level folder, found {}",
-            entry.path().display()
-        );
-    }
-    let app = entry.path();
-    for name in remove {
-        super::remove_file_if_present(&app.join(name))?;
-    }
-    Ok(app)
 }
 
 #[cfg(test)]
@@ -235,6 +282,14 @@ mod tests {
         assert!(inside(dir.path(), Path::new("/link/file")).is_err());
     }
 
+    fn folder(program: &'static str, remove: &'static [&'static str]) -> Package {
+        Package::Folder {
+            program,
+            remove,
+            keep: &[],
+        }
+    }
+
     #[test]
     fn unpacks_the_seven_zip_folder_without_portable_ini() {
         let dir = tempfile::tempdir().unwrap();
@@ -245,10 +300,7 @@ mod tests {
         let archive = dir.path().join("mgba.7z");
         sevenz_rust2::compress_to_path(dir.path().join("source"), &archive).unwrap();
 
-        let package = Package::SevenZip {
-            program: "mGBA.exe",
-            remove: &["portable.ini"],
-        };
+        let package = folder_package_mgba();
         let app = unpack(&package, &archive, &dir.path().join("scratch")).unwrap();
 
         assert_eq!(app.file_name().unwrap(), "mGBA-1.0-win64");
@@ -256,8 +308,98 @@ mod tests {
         assert!(!app.join("portable.ini").exists());
     }
 
+    fn folder_package_mgba() -> Package {
+        folder("mGBA.exe", &["portable.ini"])
+    }
+
     #[test]
-    fn seven_zip_without_a_single_folder_is_rejected() {
+    fn unpacks_a_flat_zip_as_the_program_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("snes9x-1.0-win32-x64.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        for (name, contents) in [("snes9x-x64.exe", "exe"), ("readme-windows.txt", "docs")] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            io::Write::write_all(&mut zip, contents.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+
+        let app = unpack(
+            &folder("snes9x-x64.exe", &[]),
+            &archive,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(app.join("snes9x-x64.exe")).unwrap(),
+            "exe"
+        );
+        assert!(app.join("readme-windows.txt").exists());
+    }
+
+    #[test]
+    fn a_folder_without_its_program_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("other.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        zip.start_file("other.exe", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.finish().unwrap();
+
+        let error = unpack(
+            &folder("snes9x-x64.exe", &[]),
+            &archive,
+            &dir.path().join("scratch"),
+        )
+        .unwrap_err();
+
+        assert!(format!("{error:#}").contains("snes9x-x64.exe is not in the archive"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unpacks_a_zipped_bundle_with_its_symlinks_and_modes() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("Snes9x-1.0-Mac.zip");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        let executable = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+        zip.start_file("Snes9x.app/Contents/MacOS/Snes9x", executable)
+            .unwrap();
+        io::Write::write_all(&mut zip, b"binary").unwrap();
+        zip.add_directory(
+            "Snes9x.app/Contents/Frameworks/core.framework/Versions/A",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.add_symlink(
+            "Snes9x.app/Contents/Frameworks/core.framework/Versions/Current",
+            "A",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.finish().unwrap();
+
+        let package = Package::Bundle {
+            bundle: "Snes9x.app",
+        };
+        let app = unpack(&package, &archive, &dir.path().join("scratch")).unwrap();
+
+        assert_eq!(app.file_name().unwrap(), "Snes9x.app");
+        let program = app.join("Contents/MacOS/Snes9x");
+        assert_eq!(
+            fs::metadata(&program).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        assert_eq!(
+            fs::read_link(app.join("Contents/Frameworks/core.framework/Versions/Current")).unwrap(),
+            Path::new("A")
+        );
+    }
+
+    #[test]
+    fn unpacks_a_seven_zip_without_a_single_folder_as_its_root() {
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
         fs::create_dir_all(&source).unwrap();
@@ -266,11 +408,26 @@ mod tests {
         let archive = dir.path().join("loose.7z");
         sevenz_rust2::compress_to_path(&source, &archive).unwrap();
 
-        let package = Package::SevenZip {
-            program: "a.exe",
-            remove: &[],
-        };
-        let error = unpack(&package, &archive, &dir.path().join("scratch")).unwrap_err();
-        assert!(format!("{error:#}").contains("expected one top-level folder"));
+        let app = unpack(&folder("a.exe", &[]), &archive, &dir.path().join("scratch")).unwrap();
+
+        assert!(app.join("a.exe").is_file());
+        assert!(app.join("b.dll").is_file());
+    }
+
+    #[test]
+    fn assets_are_unpacked_by_their_extension() {
+        assert!(matches!(
+            Archive::of(Path::new("Snes9x-1.63-Mac.zip")).unwrap(),
+            Archive::Zip
+        ));
+        assert!(matches!(
+            Archive::of(Path::new("mGBA-0.10.5-macos.dmg")).unwrap(),
+            Archive::DiskImage
+        ));
+        assert!(matches!(
+            Archive::of(Path::new("mGBA-0.10.5-win64.7z")).unwrap(),
+            Archive::SevenZip
+        ));
+        assert!(Archive::of(Path::new("setup.exe")).is_err());
     }
 }

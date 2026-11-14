@@ -1,121 +1,248 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// An app lum installs from its upstream GitHub releases, and the settings it
-/// keeps at lum's values.
+/// An app lum installs from its upstream GitHub releases.
 pub(crate) struct AppSpec {
     pub name: &'static str,
+    /// The app's own name, for the launchers lum names itself.
+    pub title: &'static str,
     pub description: &'static str,
     pub owner: &'static str,
     pub repo: &'static str,
     /// Release assets per platform. Without a build for this machine the app is
     /// unavailable here.
     pub builds: &'static [Build],
-    pub settings: Option<SettingsSpec>,
 }
 
-/// One release asset and how to install it.
+/// One release asset, how to install it, and the settings lum keeps for it.
 pub(crate) struct Build {
     /// A `std::env::consts::OS` value.
     pub os: &'static str,
     /// The `std::env::consts::ARCH` values the asset runs on.
     pub arch: &'static [&'static str],
-    /// The release asset's name, with `{version}` standing for the version.
+    /// The release asset's name, with `{version}` standing for the version. Its
+    /// extension says how it is packed: `.dmg`, `.zip` or `.7z` for bundles and
+    /// program folders.
     pub asset: &'static str,
     pub package: Package,
     /// The app's process name; lum leaves a running app alone.
     pub process: &'static str,
+    pub settings: Option<&'static SettingsSpec>,
+    /// Shown once after installing, for what lum cannot do itself.
+    pub note: Option<&'static str>,
 }
 
 pub(crate) enum Package {
     /// A Linux AppImage, unpacked into a folder and started by a desktop entry.
     AppImage,
-    /// A macOS disk image holding `bundle`.
-    DiskImage { bundle: &'static str },
-    /// A 7z archive with one top-level folder holding `program`, minus the
-    /// files in `remove`.
-    SevenZip {
+    /// A macOS app bundle, from a disk image or a zip.
+    Bundle { bundle: &'static str },
+    /// A Windows program folder from a zip or 7z archive: the archive's only
+    /// folder, or its root. `remove` lists files dropped after unpacking. `keep`
+    /// lists what the program writes beside itself, which an update carries over
+    /// from the previous install.
+    Folder {
         program: &'static str,
         remove: &'static [&'static str],
+        keep: &'static [&'static str],
     },
 }
 
-/// Keys lum owns in an app's INI config file. Every other key stays the app's.
+/// Keys lum owns in an app's config file. Every other line stays the app's.
 pub(crate) struct SettingsSpec {
-    pub file: fn() -> Result<PathBuf>,
+    /// The config file, given the folder the app is installed in.
+    pub file: fn(&Path) -> Result<PathBuf>,
+    pub dialect: Dialect,
     pub values: &'static [Setting],
+}
+
+/// How an app reads its config file.
+#[derive(Clone, Copy)]
+pub(crate) enum Dialect {
+    /// inih, as mGBA uses it: `key=value`, split at the first `=` or `:`.
+    Inih,
+    /// snes9x's ConfigFile: `key = value`, split at the first `=` only, so keys
+    /// such as `Dir:SRAM` keep their colon. A `#` starts a comment and `##` is a
+    /// literal `#`; quotes keep a value's outer spaces.
+    Snes9x,
 }
 
 pub(crate) struct Setting {
     pub section: &'static str,
     pub key: &'static str,
-    pub value: &'static str,
+    pub value: Value,
 }
 
-pub(crate) const CATALOG: &[AppSpec] = &[AppSpec {
-    name: "mgba",
-    description: "Game Boy Advance emulator",
-    owner: "mgba-emu",
-    repo: "mgba",
-    builds: &[
-        Build {
-            os: "linux",
-            arch: &["x86_64"],
-            asset: "mGBA-{version}-appimage-x64.appimage",
-            package: Package::AppImage,
-            process: "mgba-qt",
-        },
-        Build {
-            os: "linux",
-            arch: &["aarch64"],
-            asset: "mGBA-{version}-appimage-arm64.appimage",
-            package: Package::AppImage,
-            process: "mgba-qt",
-        },
-        Build {
-            os: "macos",
-            arch: &["aarch64", "x86_64"],
-            asset: "mGBA-{version}-macos.dmg",
-            package: Package::DiskImage { bundle: "mGBA.app" },
-            process: "mGBA",
-        },
-        Build {
-            os: "windows",
-            arch: &["x86_64"],
-            asset: "mGBA-{version}-win64.7z",
-            // portable.ini makes mGBA keep its settings beside mGBA.exe, where an
-            // update replaces them; without it they live in %APPDATA%\mGBA.
-            package: Package::SevenZip {
-                program: "mGBA.exe",
-                remove: &["portable.ini"],
+pub(crate) enum Value {
+    Text(&'static str),
+    /// The ROMs folder that `lum backup roms` backs up, so saves kept there are
+    /// backed up with the games.
+    RomsFolder,
+}
+
+pub(crate) const CATALOG: &[AppSpec] = &[
+    AppSpec {
+        name: "mgba",
+        title: "mGBA",
+        description: "Game Boy Advance emulator",
+        owner: "mgba-emu",
+        repo: "mgba",
+        builds: &[
+            Build {
+                os: "linux",
+                arch: &["x86_64"],
+                asset: "mGBA-{version}-appimage-x64.appimage",
+                package: Package::AppImage,
+                process: "mgba-qt",
+                settings: Some(&MGBA_SETTINGS),
+                note: None,
             },
-            process: "mGBA.exe",
-        },
-    ],
-    settings: Some(SettingsSpec {
-        file: mgba_config_file,
-        values: &[
-            // lum installs and updates mGBA; its own updater would replace lum's
-            // files behind its back.
-            Setting {
-                section: "ports.qt",
-                key: "updateAutoCheck",
-                value: "0",
+            Build {
+                os: "linux",
+                arch: &["aarch64"],
+                asset: "mGBA-{version}-appimage-arm64.appimage",
+                package: Package::AppImage,
+                process: "mgba-qt",
+                settings: Some(&MGBA_SETTINGS),
+                note: None,
+            },
+            Build {
+                os: "macos",
+                arch: &["aarch64", "x86_64"],
+                asset: "mGBA-{version}-macos.dmg",
+                package: Package::Bundle { bundle: "mGBA.app" },
+                process: "mGBA",
+                settings: Some(&MGBA_SETTINGS),
+                note: None,
+            },
+            Build {
+                os: "windows",
+                arch: &["x86_64"],
+                asset: "mGBA-{version}-win64.7z",
+                // portable.ini makes mGBA keep its settings beside mGBA.exe, where an
+                // update replaces them; without it they live in %APPDATA%\mGBA.
+                package: Package::Folder {
+                    program: "mGBA.exe",
+                    remove: &["portable.ini"],
+                    keep: &[],
+                },
+                process: "mGBA.exe",
+                settings: Some(&MGBA_SETTINGS),
+                note: None,
             },
         ],
-    }),
-}];
+    },
+    AppSpec {
+        name: "snes9x",
+        title: "Snes9x",
+        description: "Super Nintendo emulator",
+        owner: "snes9xgit",
+        repo: "snes9x",
+        builds: &[
+            // Saves land beside each ROM unless the GTK build is told otherwise.
+            Build {
+                os: "linux",
+                arch: &["x86_64"],
+                asset: "Snes9x-{version}-x86_64.AppImage",
+                package: Package::AppImage,
+                process: "snes9x-gtk",
+                settings: None,
+                // Upstream's AppImage leaves glibmm out along with GLib itself.
+                note: Some(
+                    "Snes9x needs glibmm 2.4 from the system (libglibmm-2.4.so.1); on Arch: sudo pacman -S glibmm",
+                ),
+            },
+            // The Mac build keeps its preferences in user defaults, not a file, and
+            // always saves to ~/Library/Application Support/Snes9x.
+            Build {
+                os: "macos",
+                arch: &["aarch64", "x86_64"],
+                asset: "Snes9x-{version}-Mac.zip",
+                package: Package::Bundle {
+                    bundle: "Snes9x.app",
+                },
+                process: "Snes9x",
+                settings: None,
+                note: None,
+            },
+            Build {
+                os: "windows",
+                arch: &["x86_64"],
+                asset: "snes9x-{version}-win32-x64.zip",
+                package: Package::Folder {
+                    program: "snes9x-x64.exe",
+                    remove: &[],
+                    // snes9x.conf, and the folders its `Dir:` settings default to.
+                    keep: &[
+                        "snes9x.conf",
+                        "BIOS",
+                        "Cheats",
+                        "Movies",
+                        "Patches",
+                        "Roms",
+                        "SatData",
+                        "Saves",
+                        "Screenshots",
+                        "SPCs",
+                    ],
+                },
+                process: "snes9x-x64.exe",
+                settings: Some(&SNES9X_WINDOWS_SETTINGS),
+                note: None,
+            },
+        ],
+    },
+];
+
+const MGBA_SETTINGS: SettingsSpec = SettingsSpec {
+    file: mgba_config_file,
+    dialect: Dialect::Inih,
+    values: &[
+        // lum installs and updates mGBA; its own updater would replace lum's files
+        // behind its back.
+        Setting {
+            section: "ports.qt",
+            key: "updateAutoCheck",
+            value: Value::Text("0"),
+        },
+    ],
+};
+
+/// snes9x for Windows saves into its own folder by default, which an update
+/// replaces. lum sends saves to the ROMs folder instead, where they sit with the
+/// games as they do on Linux.
+const SNES9X_WINDOWS_SETTINGS: SettingsSpec = SettingsSpec {
+    file: snes9x_windows_config_file,
+    dialect: Dialect::Snes9x,
+    values: &[
+        Setting {
+            section: r"Settings\Win\Files",
+            key: "Dir:SRAM",
+            value: Value::RomsFolder,
+        },
+        Setting {
+            section: r"Settings\Win\Files",
+            key: "Dir:Savestates",
+            value: Value::RomsFolder,
+        },
+    ],
+};
 
 /// mGBA reads config.ini from %APPDATA%\mGBA on Windows and from the XDG config
 /// folder everywhere else, macOS included (`mCoreConfigDirectory` upstream).
-fn mgba_config_file() -> Result<PathBuf> {
+fn mgba_config_file(_app: &Path) -> Result<PathBuf> {
     let dir = if cfg!(windows) {
         crate::paths::roaming_app_data()?.join("mGBA")
     } else {
         crate::paths::xdg_config_home()?.join("mgba")
     };
     Ok(dir.join("config.ini"))
+}
+
+/// snes9x for Windows reads snes9x.conf beside its program, always.
+fn snes9x_windows_config_file(app: &Path) -> Result<PathBuf> {
+    Ok(app.join("snes9x.conf"))
 }
 
 impl AppSpec {
@@ -185,23 +312,53 @@ pub(crate) fn available_apps() -> String {
 mod tests {
     use super::*;
 
+    fn asset(app: &str, os: &str, arch: &str) -> Option<&'static str> {
+        lookup_app(app)
+            .unwrap()
+            .build_for(os, arch)
+            .map(|build| build.asset)
+    }
+
     #[test]
     fn mgba_has_a_build_for_each_desktop_platform() {
-        let mgba = lookup_app("mgba").unwrap();
-        let asset = |os, arch| mgba.build_for(os, arch).map(|build| build.asset);
-
         assert_eq!(
-            asset("linux", "x86_64"),
+            asset("mgba", "linux", "x86_64"),
             Some("mGBA-{version}-appimage-x64.appimage")
         );
         assert_eq!(
-            asset("linux", "aarch64"),
+            asset("mgba", "linux", "aarch64"),
             Some("mGBA-{version}-appimage-arm64.appimage")
         );
-        assert_eq!(asset("macos", "aarch64"), Some("mGBA-{version}-macos.dmg"));
-        assert_eq!(asset("macos", "x86_64"), Some("mGBA-{version}-macos.dmg"));
-        assert_eq!(asset("windows", "x86_64"), Some("mGBA-{version}-win64.7z"));
-        assert_eq!(asset("windows", "aarch64"), None);
-        assert_eq!(asset("freebsd", "x86_64"), None);
+        assert_eq!(
+            asset("mgba", "macos", "aarch64"),
+            Some("mGBA-{version}-macos.dmg")
+        );
+        assert_eq!(
+            asset("mgba", "macos", "x86_64"),
+            Some("mGBA-{version}-macos.dmg")
+        );
+        assert_eq!(
+            asset("mgba", "windows", "x86_64"),
+            Some("mGBA-{version}-win64.7z")
+        );
+        assert_eq!(asset("mgba", "windows", "aarch64"), None);
+        assert_eq!(asset("mgba", "freebsd", "x86_64"), None);
+    }
+
+    #[test]
+    fn snes9x_has_a_build_for_each_desktop_platform() {
+        assert_eq!(
+            asset("snes9x", "linux", "x86_64"),
+            Some("Snes9x-{version}-x86_64.AppImage")
+        );
+        assert_eq!(asset("snes9x", "linux", "aarch64"), None);
+        assert_eq!(
+            asset("snes9x", "macos", "aarch64"),
+            Some("Snes9x-{version}-Mac.zip")
+        );
+        assert_eq!(
+            asset("snes9x", "windows", "x86_64"),
+            Some("snes9x-{version}-win32-x64.zip")
+        );
     }
 }
