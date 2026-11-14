@@ -1,15 +1,23 @@
 mod catalog;
 mod install;
+mod launcher;
+mod package;
+mod settings;
 mod state;
 
-use anyhow::Result;
+use std::{
+    io::{self, Write as _},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
+
+use anyhow::{Context, Result, bail};
 
 use crate::cli::AppsCommand;
+use catalog::{AppSpec, Build};
+use settings::SettingsStatus;
 
 pub fn run(command: AppsCommand) -> Result<()> {
-    if !cfg!(target_os = "macos") {
-        anyhow::bail!("lum apps is only supported on macOS");
-    }
     match command {
         AppsCommand::List => list(),
         AppsCommand::Install { app, force } => install_cmd(&app, force),
@@ -17,28 +25,153 @@ pub fn run(command: AppsCommand) -> Result<()> {
         AppsCommand::Update { app, force } => update_cmd(&app, force),
         AppsCommand::Sync { dry_run } => sync_cmd(dry_run),
         AppsCommand::Version { app } => version_cmd(&app),
+        AppsCommand::Uninstall { app } => uninstall_cmd(&app),
     }
 }
 
-fn version_cmd(app: &str) -> Result<()> {
-    let spec = catalog::lookup_app(app)?;
-    let status = state::local_status(spec)?;
-    let artifact = install::resolve_latest(spec)?;
+fn list() -> Result<()> {
     println!(
-        "Installed: {}",
-        status.effective_version().unwrap_or("unknown")
+        "{:<10} {:<14} {:<10} {:<12} DESCRIPTION",
+        "APP", "STATE", "VERSION", "SETTINGS"
     );
-    println!("Latest:    {}", artifact.version);
+    for spec in catalog::CATALOG {
+        let (state, version) = match spec.build() {
+            None => ("unavailable", None),
+            Some(build) => {
+                let status = state::local_status(spec, build)?;
+                let state = match (status.managed, status.exists) {
+                    (true, true) => "installed",
+                    (false, true) => "unmanaged",
+                    _ => "not installed",
+                };
+                (state, status.installed_version().map(str::to_owned))
+            }
+        };
+        let settings = match &spec.settings {
+            Some(settings) => describe(&settings::status(settings)?),
+            None => "-".into(),
+        };
+        println!(
+            "{:<10} {:<14} {:<10} {:<12} {}",
+            spec.name,
+            state,
+            version.as_deref().unwrap_or("-"),
+            settings,
+            spec.description
+        );
+    }
+    for spec in catalog::CATALOG {
+        if let Some(build) = spec.build() {
+            for path in state::foreign_copies(spec, build)? {
+                println!("foreign: {} ({})", path.display(), spec.name);
+            }
+        }
+    }
     Ok(())
 }
 
+fn status_cmd(app: &str) -> Result<()> {
+    let spec = catalog::lookup_app(app)?;
+    field("App:", spec.name);
+    match spec.build() {
+        None => field("Available:", &format!("no build for {}", platform())),
+        Some(build) => {
+            let status = state::local_status(spec, build)?;
+            field("Managed:", yes_no(status.managed));
+            field("Path:", &status.path.display().to_string());
+            field("Exists:", yes_no(status.exists));
+            field(
+                "Installed version:",
+                status.stored_version.as_deref().unwrap_or("unknown"),
+            );
+            if let Some(launcher) = launcher::path(spec, &build.package)? {
+                field("Launcher:", &launcher.display().to_string());
+            }
+            let foreign = state::foreign_copies(spec, build)?;
+            if !foreign.is_empty() {
+                field("Foreign copies:", &join_paths(&foreign));
+            }
+        }
+    }
+    if let Some(settings) = &spec.settings {
+        let status = settings::status(settings)?;
+        field("Settings file:", &status.file.display().to_string());
+        field("Settings:", &describe(&status));
+        print_drift(&status, "  ");
+    }
+    Ok(())
+}
+
+fn install_cmd(app: &str, force: bool) -> Result<()> {
+    let spec = catalog::lookup_app(app)?;
+    let build = spec.require_build()?;
+    ensure_no_foreign_copies(spec, build)?;
+    let status = state::local_status(spec, build)?;
+    if status.exists && !status.managed && !force {
+        bail!(
+            "{} already exists at {} but is not managed by lum; rerun with --force to replace it",
+            spec.name,
+            status.path.display()
+        );
+    }
+    if status.exists && status.managed && !force {
+        bail!(
+            "{} is already installed at {}; use 'lum apps update {}' or rerun with --force",
+            spec.name,
+            status.path.display(),
+            spec.name
+        );
+    }
+    ensure_not_running(spec, build)?;
+    let artifact = install::resolve_latest(spec, build)?;
+    let installed = install::install_app(spec, build, &artifact)?;
+    println!(
+        "\u{2713} Installed {} {} to {}",
+        spec.name,
+        installed.installed_version,
+        installed.path.display()
+    );
+    apply_settings(spec, build)
+}
+
+fn update_cmd(app: &str, force: bool) -> Result<()> {
+    let spec = catalog::lookup_app(app)?;
+    let build = spec.require_build()?;
+    let status = state::local_status(spec, build)?;
+    if !status.managed {
+        bail!(
+            "{} is not installed; use 'lum apps install {}' first",
+            spec.name,
+            spec.name
+        );
+    }
+    ensure_no_foreign_copies(spec, build)?;
+    let artifact = install::resolve_latest(spec, build)?;
+    let previous = status.installed_version().unwrap_or("unknown");
+    if !force && previous == artifact.version {
+        println!("{} is already up to date ({previous})", spec.name);
+    } else {
+        ensure_not_running(spec, build)?;
+        let updated = install::install_app(spec, build, &artifact)?;
+        println!(
+            "\u{2713} Updated {} {previous} -> {} at {}",
+            spec.name,
+            updated.installed_version,
+            updated.path.display()
+        );
+    }
+    apply_settings(spec, build)
+}
+
 fn sync_cmd(dry_run: bool) -> Result<()> {
-    let mut installed = 0;
-    let mut updated = 0;
-    let mut up_to_date = 0;
-    let mut skipped = 0;
+    let (mut installed, mut updated, mut up_to_date, mut configured, mut skipped) = (0, 0, 0, 0, 0);
     for spec in catalog::CATALOG {
-        let status = state::local_status(spec)?;
+        let Some(build) = spec.build() else {
+            println!("\u{2022} {}: no build for {}", spec.name, platform());
+            skipped += 1;
+            continue;
+        };
+        let status = state::local_status(spec, build)?;
         if status.exists && !status.managed {
             println!(
                 "\u{2022} {}: unmanaged at {}; rerun 'lum apps install {} --force' to take over",
@@ -49,188 +182,226 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
             skipped += 1;
             continue;
         }
-        ensure_no_foreign_copies(spec)?;
-        let artifact = install::resolve_latest(spec)?;
-        match status.effective_version() {
-            None if dry_run => {
-                println!("\u{2022} {}: would install {}", spec.name, artifact.version)
-            }
-            None => {
-                print!(
-                    "\u{2022} {}: installing {}... ",
-                    spec.name, artifact.version
-                );
-                std::io::Write::flush(&mut std::io::stdout())?;
-                install::install_app(spec, &artifact, None)?;
+        ensure_no_foreign_copies(spec, build)?;
+        let artifact = install::resolve_latest(spec, build)?;
+        let latest = artifact.version.as_str();
+        let current = status.installed_version();
+        if current == Some(latest) {
+            println!("\u{2022} {}: up to date ({latest})", spec.name);
+            up_to_date += 1;
+        } else {
+            let (doing, would) = match current {
+                Some(current) => (
+                    format!("updating {current} -> {latest}"),
+                    format!("would update {current} -> {latest}"),
+                ),
+                None => (
+                    format!("installing {latest}"),
+                    format!("would install {latest}"),
+                ),
+            };
+            if dry_run {
+                println!("\u{2022} {}: {would}", spec.name);
+            } else {
+                ensure_not_running(spec, build)?;
+                print!("\u{2022} {}: {doing}... ", spec.name);
+                io::stdout().flush()?;
+                install::install_app(spec, build, &artifact)?;
                 println!("done");
-                installed += 1;
+                if current.is_some() {
+                    updated += 1;
+                } else {
+                    installed += 1;
+                }
             }
-            Some(current) if current != artifact.version.as_str() && dry_run => {
-                println!(
-                    "\u{2022} {}: would update {} -> {}",
-                    spec.name, current, artifact.version
-                )
-            }
-            Some(current) if current != artifact.version.as_str() => {
-                print!(
-                    "\u{2022} {}: updating {} -> {}... ",
-                    spec.name, current, artifact.version
-                );
-                std::io::Write::flush(&mut std::io::stdout())?;
-                install::install_app(spec, &artifact, state::installed_at(spec)?)?;
-                println!("done");
-                updated += 1;
-            }
-            Some(current) => {
-                println!("\u{2022} {}: up to date ({})", spec.name, current);
-                up_to_date += 1;
-            }
+        }
+        let Some(settings) = &spec.settings else {
+            continue;
+        };
+        let settings = settings::status(settings)?;
+        if settings.drift.is_empty() {
+            continue;
+        }
+        let changes = count(settings.drift.len(), "setting");
+        if dry_run {
+            println!(
+                "\u{2022} {}: would set {changes} in {}",
+                spec.name,
+                settings.file.display()
+            );
+            print_drift(&settings, "    ");
+        } else {
+            ensure_not_running(spec, build)?;
+            settings::apply(&settings)?;
+            println!(
+                "\u{2022} {}: set {changes} in {}",
+                spec.name,
+                settings.file.display()
+            );
+            configured += 1;
         }
     }
     println!(
-        "\nSummary: {installed} installed, {updated} updated, {up_to_date} up to date, {skipped} skipped"
+        "\nSummary: {installed} installed, {updated} updated, {up_to_date} up to date, {configured} configured, {skipped} skipped"
     );
     Ok(())
 }
 
-fn update_cmd(app: &str, force: bool) -> Result<()> {
+fn version_cmd(app: &str) -> Result<()> {
     let spec = catalog::lookup_app(app)?;
-    let status = state::local_status(spec)?;
+    let build = spec.require_build()?;
+    let status = state::local_status(spec, build)?;
+    let artifact = install::resolve_latest(spec, build)?;
+    println!(
+        "Installed: {}",
+        status.installed_version().unwrap_or("unknown")
+    );
+    println!("Latest:    {}", artifact.version);
+    Ok(())
+}
+
+fn uninstall_cmd(app: &str) -> Result<()> {
+    let spec = catalog::lookup_app(app)?;
+    let build = spec.require_build()?;
+    let status = state::local_status(spec, build)?;
     if !status.managed {
-        anyhow::bail!(
-            "{} is not installed; use 'lum apps install {}' first",
-            spec.name,
-            spec.name
-        );
+        bail!("{} is not installed by lum", spec.name);
     }
-    ensure_no_foreign_copies(spec)?;
-    let artifact = install::resolve_latest(spec)?;
-    let previous = status.effective_version().unwrap_or("unknown").to_owned();
-    if !force && previous != "unknown" && previous == artifact.version {
-        println!("{} is already up to date ({})", spec.name, previous);
+    ensure_not_running(spec, build)?;
+    install::uninstall(spec, build)?;
+    println!(
+        "\u{2713} Uninstalled {} from {}",
+        spec.name,
+        status.path.display()
+    );
+    if let Some(settings) = &spec.settings {
+        println!("  Its settings stay in {}", (settings.file)()?.display());
+    }
+    Ok(())
+}
+
+/// Bring the app's owned settings to lum's values.
+fn apply_settings(spec: &AppSpec, build: &Build) -> Result<()> {
+    let Some(settings) = &spec.settings else {
+        return Ok(());
+    };
+    let status = settings::status(settings)?;
+    if status.drift.is_empty() {
         return Ok(());
     }
-    let updated = install::install_app(spec, &artifact, state::installed_at(spec)?)?;
+    ensure_not_running(spec, build)?;
+    settings::apply(&status)?;
     println!(
-        "\u{2713} Updated {} {} -> {} at {}",
-        spec.name,
-        previous,
-        updated.installed_version,
-        updated.path.display()
+        "\u{2713} Set {} in {}",
+        count(status.drift.len(), "setting"),
+        status.file.display()
     );
     Ok(())
 }
 
-fn ensure_no_foreign_copies(spec: &catalog::AppSpec) -> Result<()> {
-    let foreign = state::foreign_copies(spec)?;
+/// lum leaves a running app alone: mGBA rewrites its config on every settings
+/// change and ROM load, and Windows cannot replace a running program's files.
+fn ensure_not_running(spec: &AppSpec, build: &Build) -> Result<()> {
+    let name = build.process_name(spec);
+    let mut system = sysinfo::System::new().context("failed to list running processes")?;
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    // Linux lists a process under the name it was started by, cut to 15
+    // characters: an AppImage started through its AppRun symlink is "AppRun".
+    // The executable's own file name is the reliable match.
+    let running = system.processes().values().any(|process| {
+        process.name().eq_ignore_ascii_case(&name)
+            || process
+                .exe()
+                .and_then(Path::file_name)
+                .is_some_and(|file| file.eq_ignore_ascii_case(&name))
+    });
+    if running {
+        bail!("{} is running; quit it and try again", spec.name);
+    }
+    Ok(())
+}
+
+fn ensure_no_foreign_copies(spec: &AppSpec, build: &Build) -> Result<()> {
+    let foreign = state::foreign_copies(spec, build)?;
     if foreign.is_empty() {
         return Ok(());
     }
-    let paths = foreign
-        .iter()
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let hint = spec
-        .removal_hint
-        .map(|hint| format!(" (e.g. '{hint}')"))
-        .unwrap_or_default();
-    anyhow::bail!(
-        "{} exists at {} and is not managed by lum; remove it{hint} first — lum never installs alongside a foreign copy",
-        spec.app_bundle,
-        paths
-    );
-}
-
-fn install_cmd(app: &str, force: bool) -> Result<()> {
-    let spec = catalog::lookup_app(app)?;
-    ensure_no_foreign_copies(spec)?;
-    let status = state::local_status(spec)?;
-    if status.exists && !status.managed && !force {
-        anyhow::bail!(
-            "{} already exists at {} but is not managed by lum; rerun with --force to overwrite it",
-            spec.name,
-            status.path.display()
-        );
-    }
-    if status.exists && status.managed && !force {
-        anyhow::bail!(
-            "{} is already installed at {}; use 'lum apps update {}' or rerun with --force",
-            spec.name,
-            status.path.display(),
-            spec.name
-        );
-    }
-    let artifact = install::resolve_latest(spec)?;
-    let installed = install::install_app(spec, &artifact, None)?;
-    println!(
-        "\u{2713} Installed {} {} to {}",
+    bail!(
+        "{} exists at {} and is not managed by lum; remove it first — lum never installs alongside a foreign copy",
         spec.name,
-        installed.installed_version,
-        installed.path.display()
+        join_paths(&foreign)
     );
-    post_install_notes(spec);
-    Ok(())
 }
 
-fn post_install_notes(spec: &catalog::AppSpec) {
-    if spec.needs_rosetta && cfg!(target_arch = "aarch64") {
-        println!(
-            "Note: {} is an Intel-only build and requires Rosetta 2.",
-            spec.app_bundle
+/// Run a system tool quietly, failing with its error output.
+fn run_tool(command: &mut Command) -> Result<()> {
+    let program = command.get_program().to_string_lossy().into_owned();
+    let output = command
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("failed to run {program}"))?;
+    if !output.status.success() {
+        bail!(
+            "{program} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
         );
-        println!("      Install it once with: softwareupdate --install-rosetta --agree-to-license");
+    }
+    Ok(())
+}
+
+fn remove_file_if_present(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => {
+            Err(error).with_context(|| format!("failed to remove {}", path.display()))
+        }
+        _ => Ok(()),
     }
 }
 
-fn status_cmd(app: &str) -> Result<()> {
-    let spec = catalog::lookup_app(app)?;
-    let status = state::local_status(spec)?;
-    println!("App:                {}", spec.name);
-    println!("Bundle:             {}", spec.app_bundle);
-    println!("Managed:           {}", yes_no(status.managed));
-    println!("Path:              {}", status.path.display());
-    println!("Exists:            {}", yes_no(status.exists));
-    let foreign = state::foreign_copies(spec)?;
-    if !foreign.is_empty() {
-        let paths = foreign
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!("Foreign copies:     {paths}");
+fn describe(status: &SettingsStatus) -> String {
+    match status.drift.len() {
+        0 => "in sync".into(),
+        drifted => format!("{drifted} to apply"),
     }
-    println!(
-        "Installed version: {}",
-        status.effective_version().unwrap_or("unknown")
-    );
-    Ok(())
+}
+
+fn print_drift(status: &SettingsStatus, indent: &str) {
+    for drift in &status.drift {
+        let setting = drift.setting;
+        println!(
+            "{indent}[{}] {}: {} -> {}",
+            setting.section,
+            setting.key,
+            drift.current.as_deref().unwrap_or("(unset)"),
+            setting.value
+        );
+    }
+}
+
+fn platform() -> String {
+    format!("{}/{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn count(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
+}
+
+fn field(label: &str, value: &str) {
+    println!("{label:<19}{value}");
 }
 
 fn yes_no(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }
 
-fn list() -> Result<()> {
-    println!("{:<18} {:<14} {:<12} DESCRIPTION", "APP", "BUNDLE", "STATE");
-    for app in catalog::CATALOG {
-        let status = state::local_status(app)?;
-        let label = if status.managed && status.exists {
-            "installed"
-        } else if status.exists {
-            "unmanaged"
-        } else {
-            "not installed"
-        };
-        println!(
-            "{:<18} {:<14} {:<12} {}",
-            app.name, app.app_bundle, label, app.description
-        );
-    }
-    for app in catalog::CATALOG {
-        for path in state::foreign_copies(app)? {
-            println!("foreign: {} ({})", path.display(), app.name);
-        }
-    }
-    Ok(())
+fn join_paths(paths: &[PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }

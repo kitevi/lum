@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf, time::SystemTime};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use super::catalog::AppSpec;
+use super::catalog::{AppSpec, Build, Package};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct AppsState {
@@ -39,47 +39,48 @@ pub(crate) struct LocalStatus {
 }
 
 impl LocalStatus {
-    pub fn effective_version(&self) -> Option<&str> {
-        self.stored_version.as_deref()
+    /// The version lum installed, if it is still on disk.
+    pub(crate) fn installed_version(&self) -> Option<&str> {
+        self.stored_version.as_deref().filter(|_| self.exists)
     }
 }
 
-pub(crate) fn local_status(spec: &AppSpec) -> Result<LocalStatus> {
+pub(crate) fn local_status(spec: &AppSpec, build: &Build) -> Result<LocalStatus> {
     let stored = load_state()?;
-    let path = stored
-        .apps
-        .get(spec.name)
-        .map(|s| s.path.clone())
-        .unwrap_or(app_path(spec)?);
-    let exists = path.exists();
-    let managed = stored.apps.get(spec.name).is_some_and(|s| s.installed);
-    let stored_version = stored
-        .apps
-        .get(spec.name)
-        .map(|s| s.installed_version.clone());
+    let entry = stored.apps.get(spec.name);
+    let path = match entry {
+        Some(entry) => entry.path.clone(),
+        None => app_path(spec, build)?,
+    };
     Ok(LocalStatus {
-        managed,
+        managed: entry.is_some_and(|entry| entry.installed),
+        exists: path.exists(),
+        stored_version: entry.map(|entry| entry.installed_version.clone()),
         path,
-        exists,
-        stored_version,
     })
 }
 
-/// Bundles with the managed app's name found outside lum's install root.
-pub(crate) fn foreign_copies(spec: &AppSpec) -> Result<Vec<PathBuf>> {
-    let managed = app_path(spec)?;
-    let mut found = Vec::new();
-    for dir in crate::paths::foreign_scan_dirs() {
-        let candidate = dir.join(spec.app_bundle);
-        if candidate.exists() && candidate != managed {
-            found.push(candidate);
-        }
-    }
-    Ok(found)
+/// Where this build is installed: the bundle name on macOS, the app name elsewhere.
+pub(crate) fn app_path(spec: &AppSpec, build: &Build) -> Result<PathBuf> {
+    let name = match build.package {
+        Package::DiskImage { bundle } => bundle,
+        Package::AppImage | Package::SevenZip { .. } => spec.name,
+    };
+    Ok(crate::paths::apps_dir()?.join(name))
 }
 
-pub(crate) fn installed_at(spec: &AppSpec) -> Result<Option<SystemTime>> {
-    Ok(load_state()?.apps.get(spec.name).map(|s| s.installed_at))
+/// Copies of a macOS bundle outside lum's install root. With two copies of one
+/// bundle Launch Services may open either, so lum refuses to install beside one.
+pub(crate) fn foreign_copies(spec: &AppSpec, build: &Build) -> Result<Vec<PathBuf>> {
+    let Package::DiskImage { bundle } = build.package else {
+        return Ok(Vec::new());
+    };
+    let managed = app_path(spec, build)?;
+    Ok(crate::paths::foreign_scan_dirs()
+        .into_iter()
+        .map(|dir| dir.join(bundle))
+        .filter(|candidate| candidate.exists() && *candidate != managed)
+        .collect())
 }
 
 pub(crate) fn save_state(state: &AppsState) -> Result<()> {
@@ -89,14 +90,6 @@ pub(crate) fn save_state(state: &AppsState) -> Result<()> {
     }
     fs::write(path, serde_json::to_string_pretty(state)?)?;
     Ok(())
-}
-
-pub(crate) fn app_path(spec: &AppSpec) -> Result<PathBuf> {
-    Ok(apps_dir()?.join(spec.app_bundle))
-}
-
-pub(crate) fn apps_dir() -> Result<PathBuf> {
-    crate::paths::apps_dir()
 }
 
 pub(crate) fn load_state() -> Result<AppsState> {

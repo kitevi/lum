@@ -1,12 +1,12 @@
 # lum
 
-`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and macOS apps, listening to internet radio stations or letting lum pick a random one, checking local Git repositories, and managing folder-based Git identities.
+`lum` is a small opinionated CLI toolbox for setting up shell environment variables, installing a curated set of developer tools and desktop apps, listening to internet radio stations or letting lum pick a random one, checking local Git repositories, and managing folder-based Git identities.
 
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
 - `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
-- `lum apps` — install and update macOS apps like OpenEmu that Homebrew disabled (macOS only).
+- `lum apps` — install and update desktop apps like mGBA on Linux, macOS and Windows, and keep their settings.
 - `lum radio rand` — play a random built-in station, skipping the remembered station.
 
 ## Install
@@ -191,35 +191,43 @@ lum tools sync
 lum tools sync --dry-run
 ```
 
-## macOS apps
+## Desktop apps
 
-`lum apps` installs and updates macOS applications that Homebrew can no longer distribute (Homebrew 5.0 requires signed and notarized casks). Apps are installed per-user into `~/Applications/lum` — no admin rights needed — and appear in Launchpad and Spotlight like any other app.
+`lum apps` installs desktop apps from their upstream releases on Linux, macOS and Windows, per user and without admin rights, and keeps a few of their settings at lum's values.
 
 Available apps:
 
-| App | Bundle | Description |
+| App | Description | Settings lum keeps |
 | --- | --- | --- |
-| `openemu` | `OpenEmu.app` | Open source video game emulation for macOS |
+| `mgba` | Game Boy Advance emulator | `updateAutoCheck=0`, since lum does the updating |
+
+Where things go:
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| App | `~/.local/share/lum/apps/mgba` | `~/Applications/lum/mGBA.app` | `%LOCALAPPDATA%\Programs\lum\mgba` |
+| Launcher | `~/.local/share/applications/lum-mgba.desktop` | Launchpad and Spotlight | Start Menu, `lum` folder |
+| Settings | `~/.config/mgba/config.ini` | `~/.config/mgba/config.ini` | `%APPDATA%\mGBA\config.ini` |
 
 Common commands:
 
 ```sh
 lum apps ls
-lum apps install openemu
-lum apps status openemu
-lum apps version openemu
-lum apps update openemu
+lum apps install mgba
+lum apps status mgba
+lum apps version mgba
+lum apps update mgba
 lum apps sync
 lum apps sync --dry-run
+lum apps uninstall mgba
 ```
 
 Notes:
 
-- Apps are unsigned; files downloaded by lum never get the `com.apple.quarantine` attribute, so they open normally.
-- If an unmanaged copy of the app already exists (for example an old Homebrew cask install in `/Applications`), lum refuses to install alongside it. Remove the old copy first, e.g. `brew uninstall --cask openemu`, or see `src/apps/README.md` for the exact rules.
-- OpenEmu is currently an Intel-only build; on Apple Silicon lum prints the one-time Rosetta 2 install command after installing.
-
-Pair `lum apps` with `lum backup openemu` to also back up emulator save states and configs.
+- lum sets only the settings it lists. Everything else in the config file (controls, BIOS paths, recent games) stays yours. `lum apps sync` puts a changed lum setting back.
+- lum does not update an app, or change its settings, while it is running. Quit it first.
+- On Linux the AppImage is unpacked, so it runs without FUSE.
+- `lum apps uninstall` removes the app and its launcher, and keeps its settings and saves.
 
 ## Other commands
 

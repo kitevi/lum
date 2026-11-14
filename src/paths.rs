@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use directories::{ProjectDirs, UserDirs};
+use directories::{BaseDirs, ProjectDirs, UserDirs};
 
 fn project_dirs() -> Result<ProjectDirs> {
     ProjectDirs::from("dev", "ppowo", "lum").context("failed to determine platform directories")
@@ -64,18 +64,22 @@ pub(crate) fn apps_state_file() -> Result<PathBuf> {
     config_file("apps-state.json")
 }
 
-/// Install root for "lum apps": $LUM_APPS_DIR, else the per-user
-/// Applications/lum folder (created on demand by installs).
+/// Install root for "lum apps": $LUM_APPS_DIR, else the per-user apps folder
+/// of this OS (created on demand by installs).
 pub(crate) fn apps_dir() -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("LUM_APPS_DIR")
         && !dir.is_empty()
     {
         return Ok(PathBuf::from(dir));
     }
-    Ok(home_dir()?.join("Applications").join("lum"))
+    match std::env::consts::OS {
+        "macos" => Ok(home_dir()?.join("Applications").join("lum")),
+        "windows" => Ok(base_dirs()?.data_local_dir().join("Programs").join("lum")),
+        _ => data_dir("apps"),
+    }
 }
 
-/// Directories scanned for foreign (unmanaged) copies of a managed app bundle.
+/// Directories scanned for foreign (unmanaged) copies of a managed macOS bundle.
 /// Overridable for tests via $LUM_APPS_FOREIGN_SCAN_DIRS (path list).
 pub(crate) fn foreign_scan_dirs() -> Vec<PathBuf> {
     if let Some(dirs) = std::env::var_os("LUM_APPS_FOREIGN_SCAN_DIRS") {
@@ -115,6 +119,33 @@ pub(crate) fn net_game_state_file() -> Result<PathBuf> {
 
 pub(crate) fn log_dir() -> Result<PathBuf> {
     state_dir("logs")
+}
+
+/// $XDG_CONFIG_HOME when it is absolute, else ~/.config. Cross-platform apps
+/// such as mGBA read it on macOS too, where lum's own config lives elsewhere.
+pub(crate) fn xdg_config_home() -> Result<PathBuf> {
+    xdg_home("XDG_CONFIG_HOME", ".config")
+}
+
+/// $XDG_DATA_HOME when it is absolute, else ~/.local/share.
+pub(crate) fn xdg_data_home() -> Result<PathBuf> {
+    xdg_home("XDG_DATA_HOME", ".local/share")
+}
+
+fn xdg_home(variable: &str, fallback: &str) -> Result<PathBuf> {
+    match std::env::var_os(variable).map(PathBuf::from) {
+        Some(dir) if dir.is_absolute() => Ok(dir),
+        _ => home_path(fallback),
+    }
+}
+
+/// The roaming application data folder: %APPDATA% on Windows.
+pub(crate) fn roaming_app_data() -> Result<PathBuf> {
+    Ok(base_dirs()?.config_dir().to_path_buf())
+}
+
+fn base_dirs() -> Result<BaseDirs> {
+    BaseDirs::new().context("failed to determine platform directories")
 }
 
 /// Resolve home directory or bail.

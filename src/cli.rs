@@ -67,7 +67,7 @@ pub enum Commands {
         #[usage(subcommand)]
         command: ToolsCommand,
     },
-    /// Manage macOS applications installed into a per-user Applications folder. (macOS only)
+    /// Install desktop apps per-user and keep their settings.
     Apps {
         #[usage(subcommand)]
         command: AppsCommand,
@@ -199,30 +199,32 @@ pub enum ToolsCommand {
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum AppsCommand {
-    /// Install a managed macOS app.
+    /// Install an app and apply its settings.
     Install {
         app: String,
         #[usage(long)]
         force: bool,
     },
-    /// List managed macOS apps and local state.
+    /// List apps, their install state and settings.
     #[usage(visible_alias = "ls")]
     List,
-    /// Show detailed status for one managed app.
+    /// Show install details and settings for one app.
     Status { app: String },
-    /// Update one managed macOS app.
+    /// Update one app and reapply its settings.
     Update {
         app: String,
         #[usage(long)]
         force: bool,
     },
-    /// Install missing, update outdated, and list up-to-date apps.
+    /// Install missing apps, update outdated ones and reapply drifted settings.
     Sync {
         #[usage(long)]
         dry_run: bool,
     },
     /// Show installed and latest version for one app.
     Version { app: String },
+    /// Remove an app and its launcher; its settings and saves stay.
+    Uninstall { app: String },
 }
 
 #[derive(Debug, usage_rs::Subcommands)]

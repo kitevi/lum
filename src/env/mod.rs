@@ -1,5 +1,5 @@
 mod catalog;
-mod shell;
+pub(crate) mod shell;
 mod state;
 
 use anyhow::{Context, Result};
