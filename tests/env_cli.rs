@@ -125,31 +125,6 @@ fn env_set_keenable_emits_export_and_aliases_lists_it() {
 }
 
 #[test]
-fn env_set_deepseek_emits_export_and_aliases_lists_it() {
-    let home = TempDir::new().unwrap();
-
-    lum_with_env(&home)
-        .args(["env", "set", "deepseek", "sk-deepseek"])
-        .assert()
-        .success()
-        .stdout("export DEEPSEEK_API_KEY='sk-deepseek'\n");
-
-    lum_with_env(&home)
-        .args(["env", "aliases"])
-        .assert()
-        .success()
-        .stdout(predicates::str::contains("deepseek    → DEEPSEEK_API_KEY"));
-
-    lum_with_env(&home)
-        .args(["env", "init"])
-        .assert()
-        .success()
-        .stdout(predicates::str::contains(
-            "export DEEPSEEK_API_KEY='sk-deepseek'",
-        ));
-}
-
-#[test]
 fn env_quotes_shell_values_safely() {
     let home = TempDir::new().unwrap();
 
@@ -205,10 +180,10 @@ fn env_list_orders_set_aliases_before_unset() {
     let coralbricks = stdout
         .find("coralbricks ")
         .expect("coralbricks row printed");
-    let deepseek = stdout.find("deepseek").expect("unset deepseek row printed");
+    let keenable = stdout.find("keenable ").expect("unset keenable row printed");
     assert!(
-        coralbricks < deepseek,
-        "set alias 'coralbricks' should print before unset 'deepseek':\n{stdout}"
+        coralbricks < keenable,
+        "set alias 'coralbricks' should print before unset 'keenable':\n{stdout}"
     );
 }
 
