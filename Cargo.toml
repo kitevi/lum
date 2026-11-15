@@ -54,11 +54,6 @@ sevenz-rust2 = { version = "0.25.0", default-features = false, features = ["util
 # Upstream AppImages are gzip-compressed SquashFS (see ADR-0025).
 backhand = { version = "0.25.5", default-features = false, features = ["gzip"] }
 
-# `lum net game -- <command>` keeps Ctrl+C, SIGTERM and SIGHUP from killing lum before it switches
-# game mode off. Already in the tree through shared_child; `lum net` is Linux and macOS only.
-[target.'cfg(unix)'.dependencies]
-signal-hook = { version = "0.4.6", default-features = false }
-
 # Windows and macOS need a native event loop on the tray's thread; the Linux backend runs its own.
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }

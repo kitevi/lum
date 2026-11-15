@@ -17,8 +17,6 @@ mod tools;
 mod vol;
 mod yt;
 
-use std::io::{self, Write as _};
-
 use anyhow::Result;
 use cli::{Cli, Commands};
 
@@ -37,9 +35,7 @@ fn main() {
     }
 
     if let Err(error) = run(cli) {
-        // Not `eprintln!`, which panics when stderr is gone: `lum net game`
-        // can outlive the terminal it was started from.
-        let _ = writeln!(io::stderr(), "{error:#}");
+        eprintln!("{error:#}");
         tracing::error!(error = ?error, "command failed");
         std::process::exit(1);
     }

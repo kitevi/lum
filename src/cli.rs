@@ -87,7 +87,7 @@ pub enum Commands {
         /// Volume level (0–100). Omit to reset to OS default.
         volume: Option<u16>,
     },
-    /// Switch the wired connection between normal and game mode. (Linux and macOS)
+    /// Measure the wired connection. (Linux and macOS)
     Net {
         #[usage(subcommand)]
         command: NetCommand,
@@ -336,23 +336,6 @@ pub enum YtCommand {
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum NetCommand {
-    /// Force 100 Mb/s and shape downloads. Given a command or `gfn`, run it and switch back when it exits.
-    Game {
-        /// Wired interface to use instead of detecting it.
-        #[usage(long)]
-        iface: Option<String>,
-        /// Command to run in game mode. `gfn` runs GeForce NOW from Flatpak with Dash to Panel off (Linux, GNOME).
-        #[usage(
-            value_name = "COMMAND",
-            double_dash = "automatic",
-            value_hint = usage_rs::ValueHint::CommandWithArguments
-        )]
-        command: Vec<String>,
-    },
-    /// Restore automatic link speed and remove download shaping.
-    Normal,
-    /// Show game mode and the wired interfaces.
-    Status,
     /// Measure latency idle and under load, and count receive errors.
     Test {
         /// Wired interface to use instead of detecting it.
@@ -444,58 +427,6 @@ mod tests {
             Commands::Apps {
                 command: AppsCommand::List
             }
-        ));
-    }
-
-    #[test]
-    fn parses_net_game_with_a_forwarded_command() {
-        let cli = parse(&[
-            "net",
-            "game",
-            "--iface",
-            "enp0s31f6",
-            "--",
-            "flatpak",
-            "run",
-            "--branch=master",
-            "com.nvidia.geforcenow",
-        ]);
-        match cli.command {
-            Commands::Net {
-                command: NetCommand::Game { iface, command },
-            } => {
-                assert_eq!(iface.as_deref(), Some("enp0s31f6"));
-                assert_eq!(
-                    command,
-                    ["flatpak", "run", "--branch=master", "com.nvidia.geforcenow"]
-                );
-            }
-            _ => panic!("expected net game"),
-        }
-    }
-
-    #[test]
-    fn parses_net_game_forwarding_without_a_double_dash() {
-        let cli = parse(&["net", "game", "open", "-W", "-a", "GeForce NOW"]);
-        match cli.command {
-            Commands::Net {
-                command: NetCommand::Game { iface, command },
-            } => {
-                assert_eq!(iface, None);
-                assert_eq!(command, ["open", "-W", "-a", "GeForce NOW"]);
-            }
-            _ => panic!("expected net game"),
-        }
-    }
-
-    #[test]
-    fn parses_bare_net_game() {
-        let cli = parse(&["net", "game"]);
-        assert!(matches!(
-            cli.command,
-            Commands::Net {
-                command: NetCommand::Game { iface: None, ref command }
-            } if command.is_empty()
         ));
     }
 

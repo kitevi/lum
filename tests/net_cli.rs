@@ -14,37 +14,13 @@ fn net(state: &TempDir) -> Command {
 }
 
 #[test]
-fn net_help_lists_the_modes() {
+fn net_help_lists_test() {
     let state = TempDir::new().unwrap();
     net(&state)
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("game"))
-        .stdout(contains("normal"))
-        .stdout(contains("status"))
         .stdout(contains("test"));
-}
-
-#[test]
-fn net_game_help_documents_the_forwarded_command() {
-    let state = TempDir::new().unwrap();
-    net(&state)
-        .args(["game", "--help"])
-        .assert()
-        .success()
-        .stdout(contains("COMMAND"))
-        .stdout(contains("--iface"));
-}
-
-#[test]
-fn net_normal_without_game_mode_changes_nothing() {
-    let state = TempDir::new().unwrap();
-    net(&state)
-        .arg("normal")
-        .assert()
-        .success()
-        .stdout(contains("Game mode is not on."));
 }
 
 #[test]

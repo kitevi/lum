@@ -290,20 +290,16 @@ lum git-id paths
 
 See `src/git_id/README.md` for config shape, plaintext-credential warnings, ownership markers, generated files, and routing behavior.
 
-### Network game mode
+### Network test
 
-Linux and macOS only. Game mode forces the wired link to 100 Mb/s and shapes downloads just under that, for game streaming over a line whose router drops bursts at gigabit:
+Linux and macOS only. Measures latency on the wired connection idle and while downloading (bufferbloat), and counts the receive errors the interface reports meanwhile. It needs no root and changes nothing:
 
 ```sh
-lum net game gfn                                      # Linux, GNOME: GeForce NOW from Flatpak, Dash to Panel off until it exits
-lum net game -- open -W -a "GeForce NOW"             # macOS: any command; switch back when it exits
-lum net game                                          # or switch on and off by hand
-lum net normal
-lum net status
-lum net test                                          # latency idle and under load, receive errors
+lum net test                                          # 20 s under load
+lum net test --seconds 60 --iface enp0s31f6
 ```
 
-Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. If lum is killed while GeForce NOW runs, `lum net normal` turns Dash to Panel back on. See `src/net/README.md`.
+See `src/net/README.md`.
 
 ## Build from source
 

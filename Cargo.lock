@@ -1617,7 +1617,6 @@ dependencies = [
  "sevenz-rust2",
  "sha2",
  "shared_child",
- "signal-hook",
  "sysinfo",
  "tar",
  "tempfile",
