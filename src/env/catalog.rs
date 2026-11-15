@@ -1,6 +1,7 @@
 pub(crate) const ALIASES: &[(&str, &str)] = &[
     ("baro", "BARO_DB_URL"),
     ("coralbricks", "CORALBRICKS_API_KEY"),
+    ("deploy", "DEPLOY_API_KEY"),
     ("keenable", "KEENABLE_API_KEY"),
     ("opencode", "OPENCODE_API_KEY"),
     ("opendesign", "OPENDESIGN_API_KEY"),
