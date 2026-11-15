@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
+use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::artifact;
-const STALE_THRESHOLD: Duration = Duration::from_secs(24 * 60 * 60);
+const STALE_THRESHOLD: SignedDuration = SignedDuration::from_hours(24);
 const TEST_ARTIFACT_ENV: &str = "LUM_YT_DLP_TEST_ARTIFACT";
 
 /// Resolve the yt-dlp binary to use.
@@ -56,14 +56,9 @@ fn is_stale(state_path: &Path) -> bool {
         Ok(s) => s,
         Err(_) => return true,
     };
-    let last_checked = match state.last_checked {
-        Some(ts) => SystemTime::UNIX_EPOCH + Duration::from_secs(ts),
-        None => return true,
-    };
-    SystemTime::now()
-        .duration_since(last_checked)
-        .unwrap_or(Duration::ZERO)
-        > STALE_THRESHOLD
+    state
+        .last_checked
+        .is_none_or(|checked| Timestamp::now().duration_since(checked) > STALE_THRESHOLD)
 }
 
 fn try_update(local: &Path, state_path: &Path) -> Result<()> {
@@ -77,7 +72,7 @@ fn try_update(local: &Path, state_path: &Path) -> Result<()> {
         // Same version — just update the timestamp
         let updated = DepState {
             version: current_state.version,
-            last_checked: Some(now_epoch_secs()),
+            last_checked: Some(Timestamp::now()),
         };
         std::fs::write(state_path, serde_json::to_string_pretty(&updated)?)?;
         return Ok(());
@@ -94,7 +89,7 @@ fn try_update(local: &Path, state_path: &Path) -> Result<()> {
 
     let state = DepState {
         version: latest.version,
-        last_checked: Some(now_epoch_secs()),
+        last_checked: Some(Timestamp::now()),
     };
     std::fs::write(state_path, serde_json::to_string_pretty(&state)?)?;
     Ok(())
@@ -111,7 +106,7 @@ fn download_yt_dlp(local: &Path, state_path: &Path) -> Result<()> {
 
     let state = DepState {
         version: info.version,
-        last_checked: Some(now_epoch_secs()),
+        last_checked: Some(Timestamp::now()),
     };
     std::fs::write(state_path, serde_json::to_string_pretty(&state)?)?;
 
@@ -129,7 +124,7 @@ fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -
     })?;
     let state = DepState {
         version: "test".into(),
-        last_checked: Some(now_epoch_secs()),
+        last_checked: Some(Timestamp::now()),
     };
     std::fs::write(state_path, serde_json::to_string_pretty(&state)?)?;
     Ok(())
@@ -172,15 +167,10 @@ fn yt_dlp_binary_name() -> &'static str {
     }
 }
 
-fn now_epoch_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct DepState {
     version: String,
-    last_checked: Option<u64>,
+    /// Unix seconds, so state files written by older lum versions still parse.
+    #[serde(default, with = "jiff::fmt::serde::timestamp::second::optional")]
+    last_checked: Option<Timestamp>,
 }

@@ -32,7 +32,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 volumecontrol = "0.1.4"
 which = "8.0.6"
 ignore = "0.4.34"
-jiff = "0.2.43"
+jiff = { version = "0.2.43", features = ["serde"] }
 globset = "0.4.21"
 notify-rust = "4.19.0"
 # The radio tray. The `ksni` backend is StatusNotifierItem over D-Bus, so Linux needs no GTK; the

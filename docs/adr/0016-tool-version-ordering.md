@@ -11,7 +11,7 @@ Accepted
 ## Decision
 
 - Use `semver::Version::cmp_precedence` for `scc`, accepting a leading `v` and filling omitted minor or patch components with zero.
-- Use the existing `chrono::NaiveDate` parser for ctags nightly dates. Commit metadata after `+` does not affect ordering.
+- Use the existing `jiff::civil::Date` parser for ctags nightly dates. Commit metadata after `+` does not affect ordering.
 - Treat identical version strings as unchanged, including opaque tags. Report errors for differing versions that cannot be parsed. `tools update --force` bypasses ordering.
 
 `semver` is the standard Cargo-ecosystem parser, works across the supported platforms, and is already present transitively in the lockfile. It is an established fallback where blessed.rs does not cover version comparison.

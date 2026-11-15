@@ -1,15 +1,15 @@
 use std::{
     io::{self, Cursor},
     path::{Path, PathBuf},
-    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result};
+use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::artifact;
 
-const STALE_THRESHOLD: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+const STALE_THRESHOLD: SignedDuration = SignedDuration::from_hours(14 * 24);
 const TEST_ARTIFACT_ENV: &str = "LUM_FFMPEG_TEST_ARTIFACT";
 const DISABLE_AUTO_PROVISION_ENV: &str = "LUM_FFMPEG_DISABLE_AUTO_PROVISION";
 
@@ -95,14 +95,9 @@ fn is_stale(state_path: &Path) -> bool {
         Ok(state) => state,
         Err(_) => return true,
     };
-    let last_downloaded = match state.last_downloaded {
-        Some(ts) => SystemTime::UNIX_EPOCH + Duration::from_secs(ts),
-        None => return true,
-    };
-    SystemTime::now()
-        .duration_since(last_downloaded)
-        .unwrap_or(Duration::ZERO)
-        > STALE_THRESHOLD
+    state
+        .last_downloaded
+        .is_none_or(|downloaded| Timestamp::now().duration_since(downloaded) > STALE_THRESHOLD)
 }
 
 fn try_update(local: &Path, state_path: &Path) -> Result<()> {
@@ -281,7 +276,7 @@ fn install_from_local_artifact(source: &Path, local: &Path, state_path: &Path) -
 
 fn write_state(state_path: &Path) -> Result<()> {
     let state = FfmpegState {
-        last_downloaded: Some(now_epoch_secs()),
+        last_downloaded: Some(Timestamp::now()),
     };
     std::fs::write(state_path, serde_json::to_string_pretty(&state)?)?;
     Ok(())
@@ -307,16 +302,11 @@ fn ffplay_binary_name() -> &'static str {
     }
 }
 
-fn now_epoch_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct FfmpegState {
-    last_downloaded: Option<u64>,
+    /// Unix seconds, so state files written by older lum versions still parse.
+    #[serde(default, with = "jiff::fmt::serde::timestamp::second::optional")]
+    last_downloaded: Option<Timestamp>,
 }
 
 #[cfg(test)]
