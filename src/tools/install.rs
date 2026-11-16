@@ -131,7 +131,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn materialize_tar_xz_finds_nested_ctags() {
+    fn materialize_tar_xz_finds_nested_binary() {
         let dir = tempfile::tempdir().unwrap();
         let download = dir.path().join("executables.tar.xz");
         fs::write(
@@ -177,7 +177,7 @@ mod tests {
         let mut archive = tar::Builder::new(encoder);
         for (path, contents) in [
             ("bundle/.ignore", &b"nested/\n"[..]),
-            ("bundle/nested/.bin/scc", &b"binary"[..]),
+            ("bundle/nested/.bin/tool", &b"binary"[..]),
         ] {
             let mut header = tar::Header::new_gnu();
             header.set_size(contents.len() as u64);
@@ -192,7 +192,7 @@ mod tests {
             asset_name: "release.tar.gz".into(),
             download_url: String::new(),
             archive_type: ArchiveType::TarGz,
-            binary_path: "scc".into(),
+            binary_path: "tool".into(),
             checksum_sha256: None,
         };
 

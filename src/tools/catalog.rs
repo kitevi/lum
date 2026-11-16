@@ -9,24 +9,7 @@ pub(crate) struct ToolSpec {
     pub repo: &'static str,
 }
 
-pub(crate) const CATALOG: &[ToolSpec] = &[
-    ToolSpec {
-        name: "scc",
-        binary: "scc",
-        description: "Fast code counter with complexity",
-        version_args: &["--version"],
-        owner: "boyter",
-        repo: "scc",
-    },
-    ToolSpec {
-        name: "universal-ctags",
-        binary: "ctags",
-        description: "Maintained ctags implementation for source code indexing",
-        version_args: &[],
-        owner: "universal-ctags",
-        repo: "ctags-nightly-build",
-    },
-];
+pub(crate) const CATALOG: &[ToolSpec] = &[];
 
 pub(crate) fn lookup_tool(name: &str) -> Result<&'static ToolSpec> {
     CATALOG

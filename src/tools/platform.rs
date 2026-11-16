@@ -25,7 +25,7 @@ pub(crate) enum ArchiveType {
 pub(crate) fn artifact_for_release(spec: &ToolSpec, release: &GitHubRelease) -> Result<Artifact> {
     let tag = release.tag_name.as_deref().unwrap_or_default().trim();
     let version = release_version(spec, release)?;
-    let (asset_name, binary_path) = asset_for_current_platform(spec, &version)?;
+    let (asset_name, binary_path) = asset_for_current_platform(spec)?;
     let asset = release
         .assets
         .iter()
@@ -45,16 +45,7 @@ pub(crate) fn artifact_for_release(spec: &ToolSpec, release: &GitHubRelease) -> 
 fn release_version(spec: &ToolSpec, release: &GitHubRelease) -> Result<String> {
     let tag = release.tag_name.as_deref().unwrap_or_default().trim();
     let name = release.name.as_deref().unwrap_or_default().trim();
-    let value = match spec.name {
-        "universal-ctags" => tag
-            .split('+')
-            .next()
-            .unwrap_or(tag)
-            .trim_start_matches('v')
-            .to_owned(),
-        "scc" => tag.trim_start_matches('v').to_owned(),
-        _ => bail!("unknown tool {}", spec.name),
-    };
+    let value = tag.trim_start_matches('v').to_owned();
     if !value.is_empty() {
         Ok(value)
     } else if !name.is_empty() {
@@ -87,53 +78,7 @@ pub(crate) fn installed_filename(binary: &str) -> String {
     }
 }
 
-fn asset_for_current_platform(spec: &ToolSpec, version: &str) -> Result<(String, String)> {
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
-    let exe = installed_filename(spec.binary);
-    let asset = match spec.name {
-        "scc" => scc_asset(os, arch)?,
-        "universal-ctags" => ctags_asset(version, os, arch)?,
-        _ => bail!("unknown tool {}", spec.name),
-    };
-    let binary_path = match spec.name {
-        "universal-ctags" => format!("bin/{exe}"),
-        "scc" => exe,
-        _ => bail!("unknown tool {}", spec.name),
-    };
-    Ok((asset, binary_path))
-}
-
-fn scc_asset(os: &str, arch: &str) -> Result<String> {
-    let osn = match os {
-        "macos" => "Darwin",
-        "linux" => "Linux",
-        "windows" => "Windows",
-        _ => bail!("unsupported platform for scc: {os}/{arch}"),
-    };
-    let an = match arch {
-        "aarch64" => "arm64",
-        "x86_64" => "x86_64",
-        "x86" => "i386",
-        _ => bail!("unsupported arch for scc: {os}/{arch}"),
-    };
-    Ok(format!(
-        "scc_{osn}_{an}.{}",
-        if os == "windows" { "zip" } else { "tar.gz" }
-    ))
-}
-
-fn ctags_asset(version: &str, os: &str, arch: &str) -> Result<String> {
-    let osn = match os {
-        "macos" => "macos-10.15",
-        "linux" => "linux",
-        _ => bail!("unsupported platform for universal-ctags: {os}/{arch}"),
-    };
-    let an = match (os, arch) {
-        ("macos", "aarch64") => "arm64",
-        (_, "aarch64") => "aarch64",
-        (_, "x86_64") => "x86_64",
-        _ => bail!("unsupported arch for universal-ctags: {os}/{arch}"),
-    };
-    Ok(format!("uctags-{version}-{osn}-{an}.release.tar.xz"))
+// No tool in the catalog yet, so there is no release asset mapping to resolve.
+fn asset_for_current_platform(spec: &ToolSpec) -> Result<(String, String)> {
+    bail!("no release asset mapping for {}", spec.name)
 }

@@ -5,7 +5,6 @@
 The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
-- `lum tools` — install and update curated CLI tools like `scc` and `universal-ctags`.
 - `lum apps` — install and update desktop apps like mGBA on Linux, macOS and Windows, and keep their settings.
 - `lum radio rand` — play a random built-in station, skipping the remembered station.
 
@@ -170,26 +169,7 @@ After setting or unsetting a value, restart your terminal or re-run your shell i
 
 ## Managed tools
 
-`lum tools` installs curated developer tools into lum's managed binary directory. If you ran `lum env init` from your shell startup file, that directory is automatically on your `PATH`.
-
-Available tools:
-
-| Tool | Binary | Description |
-| --- | --- | --- |
-| `scc` | `scc` | Code counter with complexity |
-| `universal-ctags` | `ctags` | Source code indexer |
-
-Common commands:
-
-```sh
-lum tools ls
-lum tools install scc
-lum tools status scc
-lum tools version scc
-lum tools update scc
-lum tools sync
-lum tools sync --dry-run
-```
+`lum tools` installs curated developer tools into lum's managed binary directory. The tool catalog is currently empty, so there is nothing to install yet. If you ran `lum env init` from your shell startup file, that directory is automatically on your `PATH`.
 
 ## Desktop apps
 

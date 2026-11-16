@@ -26,10 +26,7 @@ No vex state is read or migrated. If moving from vex, reinstall or sync tools ma
 
 ## Catalog
 
-The managed tool catalog contains only:
-
-- `scc` → `scc`
-- `universal-ctags` → `ctags`
+The managed tool catalog is currently empty. Add entries to `CATALOG` in `catalog.rs`.
 
 Do not resurrect stale README-only tools from vex.
 
@@ -45,9 +42,7 @@ Use a clean Rust implementation. Keep the behavior and resolver logic from vex w
 
 ## Version Ordering
 
-`scc` versions use SemVer precedence: prereleases precede stable releases, and build metadata does not affect ordering. A leading `v` is accepted, and omitted minor or patch components default to zero.
-
-`universal-ctags` nightly versions use calendar dates (`YYYY.MM.DD`); commit metadata after `+` does not affect ordering.
+Versions use SemVer precedence: prereleases precede stable releases, and build metadata does not affect ordering. A leading `v` is accepted, and omitted minor or patch components default to zero.
 
 Identical version strings are unchanged. Differing versions that cannot be parsed report an error instead of silently treating invalid components as zero. `tools update --force` bypasses version ordering.
 

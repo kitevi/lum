@@ -35,18 +35,9 @@ fn extract_version(text: &str) -> Option<String> {
         })
 }
 
-pub(crate) fn compare_versions(spec: &ToolSpec, a: &str, b: &str) -> Result<Ordering> {
+pub(crate) fn compare_versions(a: &str, b: &str) -> Result<Ordering> {
     if a == b {
         return Ok(Ordering::Equal);
-    }
-    if spec.name == "universal-ctags" {
-        let parse = |raw: &str| {
-            let version = raw.trim().trim_start_matches('v');
-            let date = version.split_once('+').map_or(version, |(date, _)| date);
-            jiff::civil::Date::strptime("%Y.%m.%d", date)
-                .with_context(|| format!("invalid nightly version {raw:?}"))
-        };
-        return Ok(parse(a)?.cmp(&parse(b)?));
     }
     Ok(parse_version(a)?.cmp_precedence(&parse_version(b)?))
 }
@@ -91,25 +82,23 @@ mod tests {
         );
     }
 
-    fn compare_scc(a: &str, b: &str) -> Result<Ordering> {
-        let spec = super::super::catalog::lookup_tool("scc").unwrap();
-        compare_versions(spec, a, b)
-    }
-
     #[test]
-    fn compare_tool_runtime_vs_release() {
-        assert_eq!(compare_scc("1.8.1", "1.8.1").unwrap(), Ordering::Equal);
+    fn compare_equal_versions() {
+        assert_eq!(compare_versions("1.8.1", "1.8.1").unwrap(), Ordering::Equal);
     }
 
     #[test]
     fn compare_prerelease_precedes_stable() {
-        assert_eq!(compare_scc("1.0.0-rc.1", "1.0.0").unwrap(), Ordering::Less);
+        assert_eq!(
+            compare_versions("1.0.0-rc.1", "1.0.0").unwrap(),
+            Ordering::Less
+        );
     }
 
     #[test]
     fn compare_ignores_build_metadata() {
         assert_eq!(
-            compare_scc("1.2.3+build.7", "1.2.3").unwrap(),
+            compare_versions("1.2.3+build.7", "1.2.3").unwrap(),
             Ordering::Equal
         );
     }
@@ -117,35 +106,23 @@ mod tests {
     #[test]
     fn compare_normalizes_prefixes_and_abbreviated_versions() {
         for version in ["v1", "1.0", "v1.0.0"] {
-            assert_eq!(compare_scc(version, "1.0.0").unwrap(), Ordering::Equal);
+            assert_eq!(compare_versions(version, "1.0.0").unwrap(), Ordering::Equal);
         }
-        assert_eq!(compare_scc("v1.2-rc.1", "1.2.0").unwrap(), Ordering::Less);
-    }
-
-    #[test]
-    fn compare_ctags_nightly_dates() {
-        let spec = super::super::catalog::lookup_tool("universal-ctags").unwrap();
         assert_eq!(
-            compare_versions(spec, "2026.09.30+old", "2026.10.08+new").unwrap(),
+            compare_versions("v1.2-rc.1", "1.2.0").unwrap(),
             Ordering::Less
-        );
-        assert_eq!(
-            compare_versions(spec, "2026.10.08+old", "2026.10.08+new").unwrap(),
-            Ordering::Equal
         );
     }
 
     #[test]
     fn compare_rejects_malformed_versions() {
         for version in ["unsupported", "1.2.3.4", "1.0.01"] {
-            assert!(compare_scc(version, "1.0.0").is_err());
+            assert!(compare_versions(version, "1.0.0").is_err());
         }
-        let spec = super::super::catalog::lookup_tool("universal-ctags").unwrap();
-        assert!(compare_versions(spec, "2026.02.30", "2026.03.01").is_err());
     }
 
     #[test]
     fn compare_identical_opaque_tags_as_unchanged() {
-        assert_eq!(compare_scc("test", "test").unwrap(), Ordering::Equal);
+        assert_eq!(compare_versions("test", "test").unwrap(), Ordering::Equal);
     }
 }
