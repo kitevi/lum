@@ -197,7 +197,9 @@ fn env_list_orders_set_aliases_before_unset() {
     let coralbricks = stdout
         .find("coralbricks ")
         .expect("coralbricks row printed");
-    let keenable = stdout.find("keenable ").expect("unset keenable row printed");
+    let keenable = stdout
+        .find("keenable ")
+        .expect("unset keenable row printed");
     assert!(
         coralbricks < keenable,
         "set alias 'coralbricks' should print before unset 'keenable':\n{stdout}"
