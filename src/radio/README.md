@@ -54,7 +54,7 @@ The old pure-Rust foreground audio path is no longer the product direction for `
 
 ## Tray
 
-While a station runner is alive it shows a system tray icon (ADR-0022) whose menu holds the `Stop <station>` / `Play <station>` toggle, a `Stations` submenu, `Random station` and `Quit radio` (ADR-0023). The tray is an extra, not a requirement: if it cannot be created, the runner logs a warning and keeps playing.
+While a station runner is alive it shows a system tray icon (ADR-0022) whose menu holds the `Stop <station>` / `Play <station>` toggle, a `Stations` submenu, `Random station` and `Quit radio`. The tray is an extra, not a requirement: if it cannot be created, the runner logs a warning and keeps playing.
 
 - The runner's main thread owns the tray and every menu object; the supervisor runs on a worker thread that starts first. They share only `Playback` (`playback.rs`): the pause flag and the running ffplay. Never touch tray or menu objects from the worker: macOS requires the main thread, and release builds use `panic = "abort"`, so a panic would take playback down with it.
 - Stop kills ffplay and leaves the runner idle. Play respawns it with a fresh failure streak. A pause is not a stream failure: it never backs off or counts toward giving up. Backoff sleeps wake early on a pause. Playlist stations replay the current track on resume. Resume rejoins the live stream, so ADR-0020's 5s of leading silence applies again.
@@ -63,12 +63,7 @@ While a station runner is alive it shows a system tray icon (ADR-0022) whose men
 - `Quit radio` is `lum radio stop` from the tray: the runner removes the state file if it still names its own PID, kills its ffplay and exits, so `status` reports `stopped`.
 - These requests run on the tray's thread (`handle_tray_request` in `mod.rs`). The runner then returns from `main` without joining the supervisor, which `Playback::halt` has parked for good; do not make the supervisor loops learn a second way to end.
 - The runner records `paused` in `radio-player.json` so `status` stays truthful; see Runtime Semantics.
-- Linux uses tray-icon's `ksni` backend: StatusNotifierItem over D-Bus, pure Rust, no GTK. It needs a tray host. KDE, Xfce and most bars have one; stock GNOME needs the AppIndicator extension. Without a host the icon is simply invisible. Do not switch to tray-icon's default backend: it links GTK 3, and then every lum command would need GTK 3 installed just to start.
-- Windows and macOS run a `winit` event loop on the main thread (`tray.rs`). macOS uses the Accessory activation policy, so there is no Dock icon.
-- The icon is a small radio drawn in code (`icon.rs`), so there is no image asset to ship. Its antenna is up while playing and folded away while paused, so the state shows in the silhouette and not only in the colour (a template has no colour, and green against grey is a weak cue for colour-blind users).
-- The icon has to read on any panel, light or dark, because the host paints it over a panel we cannot see. The colour ink uses mid-tone fills, and a test holds them above WCAG's 3:1 contrast floor for graphics against real dark and light panels. The speaker and knobs are holes, so they take the panel's own colour, and a faint white rim around the outside keeps the icon visible on mid-tone panels while vanishing on light ones. macOS gets a black template image instead, which the system tints for the menu bar (`with_icon_templated`); that is why the state also changes the shape and, in the template, the opacity.
-- The geometry sits on a 16-unit grid so the main edges stay crisp at the common 16 px tray size. There is no preview tool in the repo: when you change the drawing, composite `icon::rgba` over a dark and a light panel at 16, 24 and 32 px and look at it; thin shapes that look fine at 64 px turn to mush at 16.
-- Clicking the icon itself is not a portable gesture across tray hosts, which is why everything is a menu item.
+- On macOS, while `lum display off` is in force, the menu starts with the display's lines and the icon becomes a monitor with the radio over its corner. How the tray is hosted, built and drawn is in `src/tray/README.md`.
 - Windows caveat: `lum radio stop` ends the runner with TerminateProcess, and Windows can leave the icon of a killed process in the notification area until the mouse passes over it. A graceful stop path would fix that if it matters.
 
 ## Supported Streams

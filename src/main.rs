@@ -15,6 +15,7 @@ mod private_file;
 mod radio;
 mod repos;
 mod tools;
+mod tray;
 mod vol;
 mod yt;
 
@@ -64,5 +65,6 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
         Commands::Net { command } => net::run(command),
         Commands::Display { state } => display::run(state),
+        Commands::DisplayTray => display::run_tray(),
     }
 }

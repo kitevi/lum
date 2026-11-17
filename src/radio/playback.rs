@@ -14,7 +14,7 @@ use shared_child::SharedChild;
 type ChangeObserver = Box<dyn Fn(bool) + Send + Sync>;
 
 #[derive(Default)]
-pub(super) struct Playback {
+pub(crate) struct Playback {
     inner: Mutex<Inner>,
     changed: Condvar,
     on_change: Option<ChangeObserver>,
@@ -53,13 +53,13 @@ impl Playback {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(super) fn is_paused(&self) -> bool {
+    pub(crate) fn is_paused(&self) -> bool {
         self.lock().paused
     }
 
     /// Pauses a playing station (killing its ffplay) or resumes a paused one.
     /// Returns the new paused state.
-    pub(super) fn toggle(&self) -> bool {
+    pub(crate) fn toggle(&self) -> bool {
         let paused = {
             let mut inner = self.lock();
             inner.paused = !inner.paused;

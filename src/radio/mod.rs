@@ -1,8 +1,6 @@
-mod icon;
-mod playback;
+pub(crate) mod playback;
 mod player;
 pub mod stations;
-mod tray;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -14,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::RadioArgs;
 use crate::paths;
+use crate::tray;
 use crate::yt::resolve_yt_dlp;
 use playback::Playback;
 use player::{ExternalPlayer, Outcome};
@@ -323,14 +322,14 @@ fn run_hosted(
     let supervisor = Arc::clone(&playback);
     let halt = Arc::clone(&playback);
     tray::host(
-        station,
-        playback,
+        tray::Radio { station, playback },
         move |request| handle_tray_request(station, &halt, request),
+        crate::display::tray_lines(),
         move || supervise(&supervisor),
     )
 }
 
-/// Carries out a tray menu request on the tray's thread (ADR-0023) and returns
+/// Carries out a tray menu request on the tray's thread (ADR-0022) and returns
 /// whether this runner should now exit. A switch starts the successor first, so a
 /// failed start leaves the current station playing.
 fn handle_tray_request(current: Station, playback: &Playback, request: tray::Request) -> bool {
@@ -525,6 +524,14 @@ fn randomized_playlist_urls(code: &str) -> Result<Vec<&'static str>> {
 
 fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &str) -> String {
     format!("radio playlist '{code}' failed at item {item_number} ({url}): {error}")
+}
+
+/// Whether a station's runner, which hosts the tray, is up.
+#[cfg(target_os = "macos")]
+pub(crate) fn station_loaded() -> bool {
+    read_state().ok().flatten().is_some_and(|state| {
+        state.process_kind != RadioProcessKind::Ffplay && process_is_alive(&state)
+    })
 }
 
 fn process_is_alive(state: &RadioState) -> bool {

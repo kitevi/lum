@@ -2,11 +2,14 @@
 //! modes, and an override file under `/Library/Displays` gives a monitor the
 //! HiDPI sizes macOS leaves out. See `README.md`.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 use std::ptr;
 
 use anyhow::{Context, Result, ensure};
+use objc2::MainThreadMarker;
+use objc2_app_kit::NSScreen;
 use objc2_core_foundation::{CFArray, CFBoolean, CFDictionary, CFRetained};
 use objc2_core_graphics::{
     CGBeginDisplayConfiguration, CGCancelDisplayConfiguration, CGCompleteDisplayConfiguration,
@@ -15,10 +18,11 @@ use objc2_core_graphics::{
     CGDisplayModelNumber, CGDisplayVendorNumber, CGError, CGGetOnlineDisplayList,
     kCGDisplayShowDuplicateLowResolutionModes,
 };
+use objc2_foundation::{NSNumber, ns_string};
 use plist::{Dictionary, Value};
 
 use super::modes::{
-    Mode, hidpi_mode, ladder, native_size, plain_mode, scale_entry, size_difference,
+    self, Mode, hidpi_mode, ladder, native_size, plain_mode, retina, scale_entry, size_difference,
 };
 use crate::cli::HidpiState;
 
@@ -29,28 +33,64 @@ const SYSTEM_OVERRIDES: &str = "/System/Library/Displays/Contents/Resources/Over
 const SCALE_RESOLUTIONS: &str = "scale-resolutions";
 /// IOKit's `kDisplayModeNativeFlag`: the mode draws the panel's own pixels.
 const NATIVE_FLAG: u32 = 0x0200_0000;
+/// IOKit's `kDisplayModeDefaultFlag`: the mode macOS picks for the monitor by itself.
+const DEFAULT_FLAG: u32 = 0x0000_0004;
 const RELOAD: &str =
     "Restart the Mac, or unplug the monitor and plug it back in, then run `lum display on` again.";
 
 pub(super) fn run(state: Option<HidpiState>) -> Result<()> {
-    let monitors = Monitor::external()?;
+    let monitors = Monitor::managed()?;
     ensure!(
         !monitors.is_empty(),
-        "no external monitor is connected; built-in screens are HiDPI already"
+        "lum display is disabled: every connected screen is Retina, so text is sharp already"
     );
-    for (index, monitor) in monitors.iter().enumerate() {
-        let label = match monitors.len() {
-            1 => String::new(),
-            _ => format!("Monitor {}: ", index + 1),
-        };
+    let mut failed = 0;
+    for (monitor, label) in monitors.iter().zip(Monitor::labels(&monitors)) {
         let line = match state {
-            None => monitor.describe(),
-            Some(HidpiState::On) => monitor.turn_on()?,
-            Some(HidpiState::Off) => monitor.turn_off()?,
+            None => Ok(monitor.describe()),
+            Some(HidpiState::On) => monitor.turn_on(),
+            Some(HidpiState::Off) => monitor.turn_off(),
         };
-        println!("{label}{line}");
+        match line {
+            Ok(line) => println!("{label}{line}"),
+            Err(error) if monitors.len() == 1 => return Err(error),
+            // One monitor failing doesn't stop the others.
+            Err(error) => {
+                eprintln!("{label}{error:#}");
+                failed += 1;
+            }
+        }
     }
+    if matches!(state, Some(HidpiState::Off)) {
+        super::tray::show();
+    }
+    ensure!(
+        failed == 0,
+        "{failed} of {} monitors did not switch",
+        monitors.len()
+    );
     Ok(())
+}
+
+/// A line for each monitor with HiDPI off, for the tray. None when no monitor
+/// lum manages can be read, such as when they are unplugged.
+pub(super) fn off_lines() -> Option<Vec<String>> {
+    let monitors: Vec<Monitor> = external_ids()
+        .ok()?
+        .into_iter()
+        .filter_map(Monitor::new)
+        .flatten()
+        .collect();
+    if monitors.is_empty() {
+        return None;
+    }
+    let off = monitors
+        .iter()
+        .zip(Monitor::labels(&monitors))
+        .filter(|(monitor, _)| CgMode::current(monitor.id).is_some_and(|now| !now.mode.hidpi()))
+        .map(|(monitor, label)| format!("{label}{}", monitor.describe().trim_end_matches('.')))
+        .collect();
+    Some(off)
 }
 
 struct Monitor {
@@ -61,26 +101,35 @@ struct Monitor {
 }
 
 impl Monitor {
-    /// Every external monitor; built-in screens are HiDPI already.
-    fn external() -> Result<Vec<Self>> {
-        let mut ids = [0; 16];
-        let mut count = 0;
-        // SAFETY: `ids` has room for as many IDs as we ask for, and `count` is a u32.
-        let error =
-            unsafe { CGGetOnlineDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut count) };
-        check(error, "list the displays")?;
-        ids.into_iter()
-            .take(count as usize)
-            .filter(|&id| !CGDisplayIsBuiltin(id))
-            .map(Self::new)
-            .collect()
+    /// Every monitor that isn't Retina. Retina screens, the built-in ones among
+    /// them, run at HiDPI by themselves, so their text is sharp already.
+    fn managed() -> Result<Vec<Self>> {
+        external_ids()?.into_iter().filter_map(Self::new).collect()
     }
 
-    fn new(id: CGDirectDisplayID) -> Result<Self> {
+    /// None for a Retina monitor.
+    fn new(id: CGDirectDisplayID) -> Option<Result<Self>> {
         let modes = CgMode::all(id);
-        let native =
-            native_size(&modes).context("macOS did not report the monitor's resolution")?;
-        Ok(Self { id, modes, native })
+        if retina(&modes) {
+            return None;
+        }
+        let native = native_size(&modes).context("macOS did not report the monitor's resolution");
+        Some(native.map(|native| Self { id, modes, native }))
+    }
+
+    /// What starts each monitor's line: its name, as System Settings shows it,
+    /// once there are several.
+    fn labels(monitors: &[Self]) -> Vec<String> {
+        let names = if monitors.len() > 1 {
+            screen_names()
+        } else {
+            HashMap::new()
+        };
+        let names: Vec<Option<&str>> = monitors
+            .iter()
+            .map(|monitor| names.get(&monitor.id).map(String::as_str))
+            .collect();
+        modes::labels(&names)
     }
 
     /// Switches to the HiDPI mode for good, so it survives restarts.
@@ -189,6 +238,7 @@ impl AsRef<Mode> for CgMode {
 impl CgMode {
     fn new(raw: CFRetained<CGDisplayMode>) -> Self {
         let mode = Some(&*raw);
+        let flags = CGDisplayMode::io_flags(mode);
         let read = Mode {
             size: (
                 CGDisplayMode::width(mode) as u32,
@@ -199,7 +249,8 @@ impl CgMode {
                 CGDisplayMode::pixel_height(mode) as u32,
             ),
             hz: CGDisplayMode::refresh_rate(mode).round() as u32,
-            native: (CGDisplayMode::io_flags(mode) & NATIVE_FLAG) != 0,
+            native: (flags & NATIVE_FLAG) != 0,
+            default: (flags & DEFAULT_FLAG) != 0,
         };
         Self { mode: read, raw }
     }
@@ -228,6 +279,40 @@ impl CgMode {
     fn current(display: CGDirectDisplayID) -> Option<Self> {
         CGDisplayCopyDisplayMode(display).map(Self::new)
     }
+}
+
+/// The displays that aren't built in; built-in screens are Retina.
+fn external_ids() -> Result<Vec<CGDirectDisplayID>> {
+    let mut ids = [0; 16];
+    let mut count = 0;
+    // SAFETY: `ids` has room for as many IDs as we ask for, and `count` is a u32.
+    let error = unsafe { CGGetOnlineDisplayList(ids.len() as u32, ids.as_mut_ptr(), &mut count) };
+    check(error, "list the displays")?;
+    Ok(ids
+        .into_iter()
+        .take(count as usize)
+        .filter(|&id| !CGDisplayIsBuiltin(id))
+        .collect())
+}
+
+/// The name macOS shows for each screen, by display ID. AppKit answers only on
+/// the main thread, which is where lum asks.
+fn screen_names() -> HashMap<CGDirectDisplayID, String> {
+    let Some(main_thread) = MainThreadMarker::new() else {
+        return HashMap::new();
+    };
+    NSScreen::screens(main_thread)
+        .iter()
+        .filter_map(|screen| {
+            // NSScreen's own display ID property needs macOS 26; this key has
+            // held the same ID all along.
+            let number = screen
+                .deviceDescription()
+                .objectForKey(ns_string!("NSScreenNumber"))?;
+            let id = number.downcast::<NSNumber>().ok()?.as_u32();
+            Some((id, screen.localizedName().to_string()))
+        })
+        .collect()
 }
 
 /// Switches a display to a mode for as long as `lasts` says.

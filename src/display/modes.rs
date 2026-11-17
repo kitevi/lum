@@ -1,5 +1,5 @@
-//! Choosing display modes and the HiDPI file's sizes, apart from CoreGraphics
-//! so it is tested on every platform.
+//! Choosing display modes, the HiDPI file's sizes and the monitors' labels,
+//! apart from CoreGraphics so it is tested on every platform.
 
 // Only the macOS build calls these outside tests.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -14,6 +14,8 @@ pub(crate) struct Mode {
     pub(crate) hz: u32,
     /// IOKit flags the mode as drawing the panel's own pixels.
     pub(crate) native: bool,
+    /// IOKit flags it as the mode macOS picks for the monitor by itself.
+    pub(crate) default: bool,
 }
 
 impl Mode {
@@ -26,6 +28,15 @@ impl AsRef<Mode> for Mode {
     fn as_ref(&self) -> &Mode {
         self
     }
+}
+
+/// A Retina monitor is one macOS runs at HiDPI by itself, so its text is sharp
+/// already and lum leaves it alone.
+pub(crate) fn retina<M: AsRef<Mode>>(modes: &[M]) -> bool {
+    modes
+        .iter()
+        .map(|mode| mode.as_ref())
+        .any(|mode| mode.default && mode.hidpi())
 }
 
 /// The panel's own resolution: what its native modes draw, else its biggest
@@ -108,6 +119,28 @@ pub(crate) fn scale_entry((width, height): (u32, u32)) -> Vec<u8> {
     [(width * 2).to_be_bytes(), (height * 2).to_be_bytes()].concat()
 }
 
+/// What starts each monitor's line: nothing with one monitor, else its name,
+/// numbered when two share it, or its place in the list when it has none.
+pub(crate) fn labels(names: &[Option<&str>]) -> Vec<String> {
+    if names.len() < 2 {
+        return vec![String::new(); names.len()];
+    }
+    let count = |names: &[Option<&str>], name: &str| {
+        names.iter().filter(|other| **other == Some(name)).count()
+    };
+    names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| match name {
+            None => format!("Monitor {}: ", index + 1),
+            Some(name) if count(names, name) > 1 => {
+                format!("{name} ({}): ", count(&names[..=index], name))
+            }
+            Some(name) => format!("{name}: "),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,6 +151,7 @@ mod tests {
             pixels: (width, height),
             hz,
             native: false,
+            default: false,
         }
     }
 
@@ -135,11 +169,18 @@ mod tests {
         }
     }
 
+    fn by_default(mode: Mode) -> Mode {
+        Mode {
+            default: true,
+            ..mode
+        }
+    }
+
     /// Modes an M1 offers a 2560x1440 monitor with the HiDPI file loaded.
     fn monitor_1440p() -> Vec<Mode> {
         vec![
             native(plain(2560, 1440, 60)),
-            native(plain(2560, 1440, 144)),
+            by_default(native(plain(2560, 1440, 144))),
             hidpi(2544, 1431, 60),
             hidpi(2544, 1431, 144),
             hidpi(2304, 1296, 144),
@@ -212,7 +253,7 @@ mod tests {
     #[test]
     fn on_finds_nothing_before_the_hidpi_file_is_loaded() {
         let modes = [
-            native(plain(2560, 1440, 144)),
+            by_default(native(plain(2560, 1440, 144))),
             native(hidpi(1280, 720, 144)),
         ];
         assert_eq!(hidpi_mode(&modes, (2560, 1440)), None);
@@ -223,7 +264,7 @@ mod tests {
         let modes = monitor_1440p();
         assert_eq!(
             plain_mode(&modes, (2560, 1440)),
-            Some(&native(plain(2560, 1440, 144)))
+            Some(&by_default(native(plain(2560, 1440, 144))))
         );
         let modes = monitor_1080p();
         assert_eq!(
@@ -272,6 +313,50 @@ mod tests {
         assert_eq!(
             scale_entry((2544, 1431)),
             [0, 0, 0x13, 0xe0, 0, 0, 0x0b, 0x2e]
+        );
+    }
+
+    /// Modes a 4K monitor offers, which macOS runs at HiDPI by itself.
+    fn monitor_4k() -> Vec<Mode> {
+        vec![
+            native(plain(3840, 2160, 60)),
+            by_default(native(hidpi(1920, 1080, 60))),
+            hidpi(2560, 1440, 60),
+            plain(1920, 1080, 60),
+        ]
+    }
+
+    #[test]
+    fn retina_is_a_monitor_macos_runs_at_hidpi_by_itself() {
+        assert!(retina(&monitor_4k()));
+        assert!(
+            !retina(&monitor_1440p()),
+            "its default mode is 1x, HiDPI file or not"
+        );
+        assert!(!retina(&monitor_1080p()));
+    }
+
+    #[test]
+    fn one_monitor_gets_no_label() {
+        assert_eq!(labels(&[Some("MP275Q E14")]), [""]);
+    }
+
+    #[test]
+    fn several_monitors_go_by_name_numbered_when_two_share_one() {
+        let names = [
+            Some("DELL P2723D"),
+            Some("MP275Q E14"),
+            None,
+            Some("DELL P2723D"),
+        ];
+        assert_eq!(
+            labels(&names),
+            [
+                "DELL P2723D (1): ",
+                "MP275Q E14: ",
+                "Monitor 3: ",
+                "DELL P2723D (2): "
+            ]
         );
     }
 }

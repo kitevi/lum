@@ -66,6 +66,11 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "libc", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }
 # `lum display on` writes the display override file.
 plist = "1.10.4"
+# `lum display` names monitors as System Settings does (NSScreen), which needs the main-thread marker,
+# and the tray asks its menu bar button whether the bar is dark (NSAppearance).
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSScreen", "NSGraphics", "NSAppearance", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSResponder"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSDictionary", "NSString", "NSValue"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

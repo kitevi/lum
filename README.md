@@ -283,7 +283,7 @@ See `src/net/README.md`.
 
 ### Display (macOS)
 
-Sharp text on external monitors macOS doesn't treat as HiDPI, such as 27-inch 2560x1440 ones, and back to plain resolution for games. No helper app keeps running.
+Sharp text on monitors macOS doesn't treat as Retina, such as 27-inch 2560x1440 ones, and back to plain resolution for games. Retina screens are left alone. No helper app keeps running for HiDPI; while it is off, a tray icon says so.
 
 ```sh
 lum display on     # HiDPI at about the monitor's own size; the first time it asks for your password and a restart

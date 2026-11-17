@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted.
+Accepted. ADR-0030 narrows it to monitors that aren't Retina; ADR-0022 shows `off` in the tray.
 
 ## Context
 

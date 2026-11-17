@@ -1,6 +1,6 @@
 # Display Subcommand
 
-`lum display` turns HiDPI on and off for external monitors: on for sharp text, off for games. It does the job of Crisp or Acuity without an app. macOS only; elsewhere it refuses to run. Why it works this way is in ADR-0029.
+`lum display` turns HiDPI on and off for monitors that aren't Retina: on for sharp text, off for games. It does the job of Crisp or Acuity without an app. macOS only; elsewhere it refuses to run. Why it works this way is in ADR-0029, ADR-0030 and, for the tray, ADR-0022.
 
 ## CLI Shape
 
@@ -10,7 +10,9 @@ lum display on     # HiDPI at about the monitor's own size
 lum display off    # the monitor's plain resolution
 ```
 
-Every external monitor is switched; with several, each line names its monitor. Built-in screens are HiDPI already and are left alone.
+Every monitor that isn't Retina is switched, each on its own. A monitor is Retina when the mode macOS picks for it by itself, the one IOKit flags `kDisplayModeDefaultFlag`, is HiDPI; built-in screens always are. Retina monitors are left alone, and with only Retina screens connected `lum display` says it is disabled and fails.
+
+With several monitors, each line starts with the monitor's name as System Settings shows it (NSScreen's `localizedName`), numbered when two share a name, or `Monitor N` without one. A monitor that fails to switch doesn't stop the others: its error is printed after its name, and the command fails at the end.
 
 ## On and Off
 
@@ -33,8 +35,25 @@ macOS only offers HiDPI sizes for monitors it treats as high-density. For the ot
 - Monitors Apple ships an override for under `/System/Library/Displays` are left alone.
 - `off` only switches the mode and keeps the file, so `on` needs no password or restart afterwards.
 
+## Tray
+
+`off` lasts until logout, so a tray icon shows it until HiDPI is back on (ADR-0022).
+
+- The menu holds a disabled line for each monitor with HiDPI off, worded as `lum display` prints it.
+- While a station is loaded, its runner's tray shows the lines above the radio's items, and its icon becomes the monitor with the radio over its corner.
+- Otherwise `off` starts the display tray (`tray.rs`): `lum __display_tray`, a process of its own with a monitor icon. It holds a lock on `display-tray.lock` in lum's state folder, so there is only ever one. A station's tray shows the lines only while that lock is held, so without `lum display off` a monitor at its plain resolution shows nothing.
+- Every 10 seconds the display tray reads the modes again (`MODES_EVERY`); whether a station is loaded it checks every 2. A tray that leaves checks once more after releasing its lock and starts a new one if HiDPI is off again, so a `lum display off` racing its exit still gets an icon. It hides while a station is loaded and exits once HiDPI is back on everywhere, by `lum display on` or System Settings. While every monitor it manages is unplugged it stays, hidden, until one comes back or the session ends.
+- How the tray is hosted and drawn is in `src/tray/README.md`.
+
 ## Tests
 
-Picking the modes, the size difference, the size list and the file entries are unit tested on every platform in `modes.rs`, with the modes a 1440p and a 1080p monitor offer. `tests/display_cli.rs` covers the CLI surface without touching a display.
+Picking the modes, the size difference, the size list, the file entries, which monitors are Retina and the monitors' labels are unit tested on every platform in `modes.rs`, with the modes a 4K, a 1440p and a 1080p monitor offer. `tests/display_cli.rs` covers the CLI surface without touching a display.
 
-`lum display`, `off` and `on` have been run by hand on an M1 Mac with a 2560x1440 monitor that had Crisp's file loaded. Installing the file needs a password and has not been run yet: on a monitor without the file, run `lum display on`, restart, then run it again. A restart after `off` has not been tried yet either.
+`lum display`, `off` and `on` have been run by hand on an M1 Mac with a 2560x1440 monitor that had Crisp's file loaded. Installing the file needs a password and has not been run yet: on a monitor without the file, run `lum display on`, restart, then run it again. A restart after `off` has not been tried yet either. Neither have several monitors, a Retina monitor or the tray. The tray needs a desktop session, so it is checked by hand:
+
+```sh
+cargo run -- display off   # a monitor icon appears; its menu reads "HiDPI off: ..."
+cargo run -- radio dron    # within 10 s the monitor joins the radio's icon, its line above the radio's items
+cargo run -- radio stop    # the monitor icon comes back by itself
+cargo run -- display on    # within 10 s the icon goes
+```
