@@ -94,12 +94,6 @@ const STATIONS: &[Station] = &[
         url: "https://ice1.somafm.com/n5md-128-mp3",
         tags: &["electronic", "idm"],
     },
-    Station {
-        code: "arab",
-        name: "Arab Mix FM",
-        url: "https://stream.zeno.fm/na3vpvn10qruv.acc",
-        tags: &["arabic", "world"],
-    },
 ];
 
 pub const fn all() -> &'static [Station] {
@@ -186,7 +180,7 @@ mod tests {
             codes,
             [
                 "conc", "expr", "impr", "cavt", "mini", "dron", "rdrn", "dark", "ritl", "dsp1",
-                "slow", "fiel", "pond", "n5md", "arab",
+                "slow", "fiel", "pond", "n5md",
             ]
         );
     }
@@ -210,7 +204,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len() - 1);
         assert_eq!(eligible.first().map(|station| station.code), Some("expr"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("arab"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("n5md"));
         assert!(eligible.iter().all(|station| station.code != "conc"));
     }
 
@@ -227,7 +221,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len());
         assert_eq!(eligible.first().map(|station| station.code), Some("conc"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("arab"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("n5md"));
     }
 
     #[test]
@@ -244,7 +238,7 @@ mod tests {
 
         assert_eq!(observed_len, eligible.len());
         assert_eq!(first.map(|station| station.code), Some("expr"));
-        assert_eq!(last.map(|station| station.code), Some("arab"));
+        assert_eq!(last.map(|station| station.code), Some("n5md"));
     }
 
     #[test]
@@ -272,7 +266,6 @@ mod tests {
 
     #[test]
     fn retained_stations_keep_their_tags() {
-        assert!(find("arab").unwrap().tags.contains(&"world"));
         assert!(find("dron").unwrap().tags.contains(&"ambient"));
         assert!(find("pond").unwrap().tags.contains(&"live"));
     }
