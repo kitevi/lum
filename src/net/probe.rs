@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{Result, ensure};
 
-use super::iface;
+use super::{Platform, describe_link, load_record, pick};
 
 /// Latency is the time a TCP handshake takes. Unlike ping it needs no root on
 /// macOS, whose ping refuses intervals under a second for normal users.
@@ -30,21 +30,19 @@ const LOAD_URLS: [&str; 3] = [
     "https://proof.ovh.net/files/10Gb.dat",
 ];
 
-pub(super) fn run(requested: Option<&str>, seconds: u64) -> Result<()> {
+pub(super) fn run(platform: &dyn Platform, requested: Option<&str>, seconds: u64) -> Result<()> {
     ensure!(
         (5..=120).contains(&seconds),
         "--seconds must be between 5 and 120"
     );
-    let iface = iface::pick(
-        iface::interfaces()?,
-        iface::default_route().as_deref(),
-        requested,
-    )?;
+    let iface = pick(platform, requested)?;
+    let game = load_record()?.is_some_and(|record| platform.is_applied(&record));
     println!(
-        "{} ({}) {}",
+        "{} ({}) {}, game mode {}",
         iface.name,
         iface.mac,
-        describe_link(iface.speed, iface.link)
+        describe_link(iface.speed, iface.link),
+        if game { "on" } else { "off" }
     );
 
     println!("Measuring idle latency for {}s...", IDLE.as_secs());
@@ -96,10 +94,13 @@ pub(super) fn run(requested: Option<&str>, seconds: u64) -> Result<()> {
     println!();
     if let (Some(idle), Some(loaded)) = (idle.average_ms(), loaded.average_ms()) {
         let added = loaded - idle;
-        println!(
-            "Bufferbloat: {}, {added:+.1} ms under load.",
-            bufferbloat(added)
-        );
+        let level = bufferbloat(added);
+        let hint = if level != "low" && !game {
+            " 'lum net game' shapes downloads to keep it low."
+        } else {
+            ""
+        };
+        println!("Bufferbloat: {level}, {added:+.1} ms under load.{hint}");
     }
     if let Some((errors, packets)) = errors {
         println!("Receive errors: {}.", errors_verdict(errors, packets));
@@ -108,14 +109,6 @@ pub(super) fn run(requested: Option<&str>, seconds: u64) -> Result<()> {
         println!("For Apple's own measurement, run: networkQuality -s");
     }
     Ok(())
-}
-
-fn describe_link(speed: Option<u32>, link: bool) -> String {
-    match (link, speed) {
-        (true, Some(speed)) => format!("at {speed} Mb/s"),
-        (true, None) => "has a link".to_owned(),
-        (false, _) => "has no link".to_owned(),
-    }
 }
 
 #[derive(Debug, Default)]
@@ -243,7 +236,8 @@ fn bufferbloat(added_ms: f64) -> &'static str {
 }
 
 /// Receive errors are mostly packets damaged on the wire (CRC errors); some
-/// drivers count each one twice. Game streaming copes with well under 0.1%.
+/// drivers count each one twice. Game streaming copes with well under 0.1%:
+/// GeForce NOW only warns from 1% loss.
 fn errors_verdict(errors: u64, packets: u64) -> &'static str {
     if errors == 0 {
         "none"
@@ -257,13 +251,6 @@ fn errors_verdict(errors: u64, packets: u64) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn describes_the_link_for_people() {
-        assert_eq!(describe_link(Some(100), true), "at 100 Mb/s");
-        assert_eq!(describe_link(None, true), "has a link");
-        assert_eq!(describe_link(None, false), "has no link");
-    }
 
     #[test]
     fn summarises_latency_samples() {

@@ -270,16 +270,20 @@ lum git-id paths
 
 See `src/git_id/README.md` for config shape, plaintext-credential warnings, ownership markers, generated files, and routing behavior.
 
-### Network test
+### Network game mode
 
-Linux and macOS only. Measures latency on the wired connection idle and while downloading (bufferbloat), and counts the receive errors the interface reports meanwhile. It needs no root and changes nothing:
+Linux and macOS only. Game mode forces the wired link to 100 Mb/s and shapes downloads just under that, for game streaming over a line whose router drops bursts at gigabit:
 
 ```sh
-lum net test                                          # 20 s under load
-lum net test --seconds 60 --iface enp0s31f6
+lum net game -- flatpak run com.nvidia.geforcenow     # Linux: any command; switch back when it exits
+lum net game -- open -W -a "GeForce NOW"              # macOS
+lum net game                                          # or switch on and off by hand
+lum net normal
+lum net status
+lum net test                                          # latency idle and under load, receive errors
 ```
 
-See `src/net/README.md`.
+Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. See `src/net/README.md`.
 
 ### Display (macOS)
 

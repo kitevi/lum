@@ -1,10 +1,11 @@
-//! Finding the wired interface to test.
+//! Finding the wired interface. Names are read fresh on every run and never
+//! trusted across runs: a USB adapter or a reinstall can rename them.
 
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail, ensure};
 
-/// A network interface as `lum net test` sees it.
+/// A network interface as game mode sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Iface {
     pub name: String,
@@ -14,9 +15,11 @@ pub(super) struct Iface {
     pub link: bool,
     /// The current link speed in Mb/s, while there is a link.
     pub speed: Option<u32>,
+    /// macOS: the media was set by hand instead of `autoselect`.
+    pub forced: bool,
 }
 
-/// Picks the interface to test: the one asked for, else the only
+/// Picks the interface game mode works on: the one asked for, else the only
 /// wired interface with a link, else the one of those carrying the default route.
 pub(super) fn pick(
     all: Vec<Iface>,
@@ -52,27 +55,26 @@ pub(super) fn pick(
             names.join(", ")
         );
     }
-    linked.pop().context(
-        "no wired Ethernet interface has a link; lum net test is for wired connections only",
-    )
+    linked
+        .pop()
+        .context("no wired Ethernet interface has a link; game mode is for wired connections only")
 }
 
-/// Every network interface, wired or not, with its current link.
-pub(super) fn interfaces() -> Result<Vec<Iface>> {
-    if cfg!(target_os = "macos") {
-        Ok(parse_ifconfig(&output("ifconfig", &["-a"])?))
-    } else {
-        read_sysfs(Path::new("/sys/class/net"))
-    }
-}
-
-/// The interface that carries the default route, if any.
-pub(super) fn default_route() -> Option<String> {
-    if cfg!(target_os = "macos") {
-        macos_default_route(&output("route", &["-n", "get", "default"]).ok()?)
-    } else {
-        linux_default_route(&fs::read_to_string("/proc/net/route").ok()?)
-    }
+/// Finds a recorded interface again by its MAC address, whatever it is called
+/// now. Only wired interfaces count: a bridge, bond or VLAN on top of one has
+/// its address and can sort first. Where two wired interfaces share an
+/// address, as the two halves of a bond do, the recorded name decides.
+pub(super) fn find(all: Vec<Iface>, name: &str, mac: &str) -> Option<Iface> {
+    all.into_iter()
+        .filter(|iface| {
+            iface.wired
+                && if mac.is_empty() {
+                    iface.name == name
+                } else {
+                    iface.mac.eq_ignore_ascii_case(mac)
+                }
+        })
+        .max_by_key(|iface| iface.name == name)
 }
 
 /// Linux: reads `/sys/class/net` (or a test copy of it).
@@ -106,6 +108,7 @@ pub(super) fn read_sysfs(root: &Path) -> Result<Vec<Iface>> {
             wired,
             link,
             speed,
+            forced: false,
         });
     }
     found.sort_by(|a, b| a.name.cmp(&b.name));
@@ -139,6 +142,7 @@ pub(super) fn parse_ifconfig(text: &str) -> Vec<Iface> {
                     wired: false,
                     link: false,
                     speed: None,
+                    forced: false,
                 });
             }
             continue;
@@ -150,6 +154,7 @@ pub(super) fn parse_ifconfig(text: &str) -> Vec<Iface> {
         if let Some(mac) = line.strip_prefix("ether ") {
             iface.mac = mac.trim().to_owned();
         } else if let Some(media) = line.strip_prefix("media:") {
+            iface.forced = !media.trim().starts_with("autoselect");
             iface.speed = media_speed(media);
             iface.wired = iface.speed.is_some();
         } else if let Some(status) = line.strip_prefix("status:") {
@@ -180,6 +185,14 @@ fn media_speed(media: &str) -> Option<u32> {
     }
 }
 
+/// macOS: whether `ifconfig -m <iface>` lists 100 Mb/s full duplex.
+pub(super) fn supports_game_media(text: &str) -> bool {
+    text.lines().any(|line| {
+        line.trim()
+            .starts_with("media 100baseTX mediaopt full-duplex")
+    })
+}
+
 /// macOS: the interface in `route -n get default`.
 pub(super) fn macos_default_route(text: &str) -> Option<String> {
     text.lines()
@@ -188,19 +201,13 @@ pub(super) fn macos_default_route(text: &str) -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
-/// Runs a command and returns its stdout.
-fn output(program: &str, args: &[&str]) -> Result<String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .with_context(|| format!("failed to run {program}"))?;
-    ensure!(
-        output.status.success(),
-        "{program} {} failed: {}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stderr).trim()
-    );
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+/// macOS: the reference `pfctl -E` prints as `Token : 12345`.
+pub(super) fn pf_token(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("Token"))
+        .and_then(|rest| rest.split_once(':'))
+        .map(|(_, token)| token.trim().to_owned())
+        .filter(|token| !token.is_empty())
 }
 
 #[cfg(test)]
@@ -214,6 +221,7 @@ mod tests {
             wired,
             link,
             speed: link.then_some(1000),
+            forced: false,
         }
     }
 
@@ -252,6 +260,49 @@ mod tests {
         assert!(pick(all.clone(), None, Some("nope")).is_err());
         let all = vec![iface("eth0", true, true), iface("eth1", true, true)];
         assert_eq!(pick(all, None, Some("eth1")).unwrap().name, "eth1");
+    }
+
+    fn with_mac(name: &str, wired: bool, mac: &str) -> Iface {
+        Iface {
+            mac: mac.to_owned(),
+            ..iface(name, wired, true)
+        }
+    }
+
+    #[test]
+    fn finds_the_wired_interface_among_those_sharing_its_address() {
+        // A bridge over the interface takes its address and sorts first.
+        let all = vec![
+            with_mac("br0", false, "aa:bb"),
+            with_mac("enp3s0", true, "AA:BB"),
+            with_mac("enp3s0.10", false, "aa:bb"),
+        ];
+        assert_eq!(find(all, "enp3s0", "aa:bb").unwrap().name, "enp3s0");
+        // Unplugged: the bridge that is left with the address is not it.
+        let left = vec![with_mac("br0", false, "aa:bb")];
+        assert_eq!(find(left, "enx001122334455", "aa:bb"), None);
+    }
+
+    #[test]
+    fn finds_a_renamed_interface_by_its_address() {
+        let all = vec![
+            with_mac("eth0", true, "cc:dd"),
+            with_mac("eth1", true, "aa:bb"),
+        ];
+        assert_eq!(find(all.clone(), "eth0", "aa:bb").unwrap().name, "eth1");
+        // Without a recorded address there is only the name to go by.
+        assert_eq!(find(all, "eth0", "").unwrap().name, "eth0");
+    }
+
+    #[test]
+    fn the_recorded_name_decides_between_wired_interfaces_sharing_an_address() {
+        // The two halves of a bond.
+        let all = vec![
+            with_mac("enp3s0", true, "aa:bb"),
+            with_mac("enp4s0", true, "aa:bb"),
+        ];
+        assert_eq!(find(all.clone(), "enp3s0", "aa:bb").unwrap().name, "enp3s0");
+        assert_eq!(find(all, "enp4s0", "aa:bb").unwrap().name, "enp4s0");
     }
 
     fn fake_iface(root: &Path, name: &str, files: &[(&str, &str)], dirs: &[&str]) {
@@ -302,6 +353,7 @@ mod tests {
                 wired: true,
                 link: true,
                 speed: Some(100),
+                forced: false,
             }
         );
         assert!(!get("wlan0").wired);
@@ -370,8 +422,10 @@ utun0: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
                 wired: true,
                 link: true,
                 speed: Some(1000),
+                forced: false,
             }
         );
+        assert!(get("en8").forced);
         assert_eq!(get("en8").speed, Some(100));
         assert!(!get("en9").wired && !get("en9").link);
         assert!(!get("bridge0").wired);
@@ -406,6 +460,19 @@ utun0: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
     }
 
     #[test]
+    fn checks_macos_supported_media() {
+        let usb = "en7: flags=8863<UP> mtu 1500\n\
+            \tsupported media:\n\
+            \t\tmedia autoselect\n\
+            \t\tmedia 100baseTX mediaopt full-duplex,flow-control\n\
+            \t\tmedia 1000baseT mediaopt full-duplex\n";
+        assert!(supports_game_media(usb));
+        assert!(!supports_game_media(
+            "\tsupported media:\n\t\tmedia autoselect\n"
+        ));
+    }
+
+    #[test]
     fn reads_the_macos_default_route() {
         let text = "   route to: default\ndestination: default\n    gateway: 192.168.1.1\n  interface: en7\n";
         assert_eq!(macos_default_route(text).as_deref(), Some("en7"));
@@ -413,5 +480,12 @@ utun0: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
             macos_default_route("route: writing to routing socket: not in table\n"),
             None
         );
+    }
+
+    #[test]
+    fn reads_the_pf_enable_token() {
+        let text = "No ALTQ support in kernel\nALTQ related functions disabled\npf enabled\nToken : 13254978341234\n";
+        assert_eq!(pf_token(text).as_deref(), Some("13254978341234"));
+        assert_eq!(pf_token("pf enabled\n"), None);
     }
 }
