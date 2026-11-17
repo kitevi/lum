@@ -3,7 +3,6 @@ mod player;
 pub mod stations;
 
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,10 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::cli::RadioArgs;
 use crate::paths;
 use crate::tray;
-use crate::yt::resolve_yt_dlp;
 use playback::Playback;
 use player::{ExternalPlayer, Outcome};
-use stations::{Station, StationKind};
+use stations::Station;
 
 const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio dron)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
 
@@ -86,6 +84,7 @@ struct RadioState {
 enum RadioProcessKind {
     #[default]
     Ffplay,
+    /// Written by the retired `__radio_playlist_runner`; kept so old state files still parse.
     PlaylistRunner,
     DirectRunner,
 }
@@ -142,24 +141,15 @@ fn play(station: Station) -> Result<()> {
 /// Starts `station`'s runner and makes it the remembered one. Whatever was
 /// remembered before is the caller's to stop.
 fn start(station: Station) -> Result<()> {
-    let (player, process_kind) = match station.kind {
-        StationKind::YouTubePlaylist => (
-            ExternalPlayer::start_playlist(station.code)?,
-            RadioProcessKind::PlaylistRunner,
-        ),
-        // Direct and YouTube stations run under a supervisor runner that
-        // respawns playback when the stream fails; see ADR-0014.
-        _ => (
-            ExternalPlayer::start_station_runner(station.code)?,
-            RadioProcessKind::DirectRunner,
-        ),
-    };
+    // The station runs under a supervisor runner that respawns playback when
+    // the stream fails; see ADR-0014.
+    let player = ExternalPlayer::start_station_runner(station.code)?;
     write_state(&RadioState {
         pid: player.pid,
         start_time: player.start_time,
         code: station.code.to_string(),
         description: station.name.to_string(),
-        process_kind,
+        process_kind: RadioProcessKind::DirectRunner,
         paused: false,
     })
 }
@@ -193,14 +183,6 @@ fn status_line(state: &RadioState) -> String {
     format!("{verb} {} {}", state.code, state.description)
 }
 
-fn playable_url(station: Station) -> Result<String> {
-    match station.kind {
-        StationKind::Direct => Ok(station.url.to_string()),
-        StationKind::YouTube => resolve_youtube_stream_url(station.url),
-        StationKind::YouTubePlaylist => bail!("playlist stations are not playable yet"),
-    }
-}
-
 fn stop_existing() -> Result<bool> {
     let Some(state) = read_state()? else {
         return Ok(false);
@@ -208,47 +190,6 @@ fn stop_existing() -> Result<bool> {
     stop_process(&state);
     remove_state()?;
     Ok(true)
-}
-
-fn resolve_youtube_stream_url(url: &str) -> Result<String> {
-    let yt_dlp = resolve_yt_dlp()?;
-    let output = Command::new(yt_dlp)
-        .args(youtube_stream_url_args(url))
-        .output()
-        .context("failed to run yt-dlp")?;
-    if !output.status.success() {
-        bail!(
-            "yt-dlp failed to resolve YouTube station: {}",
-            yt_dlp_reason(&output.stderr)
-        );
-    }
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .next()
-        .context("yt-dlp produced no stream URL")?
-        .to_string())
-}
-
-/// yt-dlp buries the real cause under progress lines on stderr, so prefer its ERROR line.
-/// Without this, a dead or unresolvable station URL reports only that resolution failed.
-fn yt_dlp_reason(stderr: &[u8]) -> String {
-    let stderr = String::from_utf8_lossy(stderr);
-    let lines: Vec<&str> = stderr
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect();
-    let reason = lines
-        .iter()
-        .find(|line| line.starts_with("ERROR"))
-        .or_else(|| lines.first())
-        .copied()
-        .unwrap_or("yt-dlp reported no reason");
-    reason.strip_prefix("ERROR: ").unwrap_or(reason).to_string()
-}
-
-fn youtube_stream_url_args(url: &str) -> [&str; 5] {
-    ["-g", "--no-playlist", "-f", "bestaudio", url]
 }
 
 /// How long one playback attempt must last to count as a healthy session and
@@ -299,9 +240,9 @@ impl StreamRetry {
     }
 }
 
-/// Runs one direct or YouTube station under a supervisor: respawn ffplay
-/// whenever the stream ends or fails, re-resolving YouTube URLs each attempt,
-/// and give up (with a notification) after too many consecutive failures.
+/// Runs one station under a supervisor: respawn ffplay whenever the stream
+/// ends or fails, and give up (with a notification) after too many consecutive
+/// failures.
 /// The supervisor runs next to the station's tray, which can pause it.
 pub(crate) fn run_direct_runner(code: String) -> Result<()> {
     let station =
@@ -402,18 +343,12 @@ fn with_pause_state(mut state: RadioState, runner_pid: u32, paused: bool) -> Opt
 }
 
 fn run_station_stream_loop(station: Station, playback: &Playback) -> Result<()> {
-    if station.kind == StationKind::YouTubePlaylist {
-        bail!("playlist stations use the playlist runner");
-    }
     supervise_station(station, playback, || play_station_once(station, playback))
 }
 
-/// One playback attempt: resolve the stream URL, then play it until ffplay exits.
-/// Resolution failures count as attempt failures: they feed the retry loop
-/// instead of killing the runner.
+/// One playback attempt: play the station's stream until ffplay exits.
 fn play_station_once(station: Station, playback: &Playback) -> Result<Outcome> {
-    let url = playable_url(station)?;
-    ExternalPlayer::play_live_until_exit(url, playback)
+    ExternalPlayer::play_until_exit(station.url.to_string(), playback)
 }
 
 /// The respawn policy for one station: run `attempt` over and over until too
@@ -471,59 +406,6 @@ fn notify_stream_lost(message: &str) {
     {
         tracing::warn!(error = %error, "failed to show the radio give-up notification");
     }
-}
-
-pub(crate) fn run_playlist_runner(code: String) -> Result<()> {
-    let station = *stations::find(&code)
-        .with_context(|| format!("unknown radio playlist station '{code}'"))?;
-    let urls = randomized_playlist_urls(&code)?;
-    run_hosted(station, move |playback| {
-        run_playlist_loop(&code, &urls, playback)
-    })
-}
-
-fn run_playlist_loop(code: &str, urls: &[&'static str], playback: &Playback) -> Result<()> {
-    loop {
-        for (index, url) in urls.iter().enumerate() {
-            let item_number = index + 1;
-            // A pause stops the current track; resuming plays it again from the start.
-            loop {
-                playback.wait_until_playing();
-                let stream_url = match resolve_youtube_stream_url(url) {
-                    Ok(stream_url) => stream_url,
-                    Err(error) => {
-                        let message =
-                            playlist_failure_message(code, item_number, url, &error.to_string());
-                        tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
-                        bail!(message);
-                    }
-                };
-
-                match ExternalPlayer::play_until_exit(stream_url, playback) {
-                    Ok(Outcome::Ended) => break,
-                    Ok(Outcome::Paused) => continue,
-                    Err(error) => {
-                        let message =
-                            playlist_failure_message(code, item_number, url, &error.to_string());
-                        tracing::error!(station = %code, item = item_number, url = %url, error = %error, "{message}");
-                        bail!(message);
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn randomized_playlist_urls(code: &str) -> Result<Vec<&'static str>> {
-    let mut urls = stations::playlist_urls(code)
-        .with_context(|| format!("unknown radio playlist station '{code}'"))?
-        .to_vec();
-    fastrand::shuffle(&mut urls);
-    Ok(urls)
-}
-
-fn playlist_failure_message(code: &str, item_number: usize, url: &str, error: &str) -> String {
-    format!("radio playlist '{code}' failed at item {item_number} ({url}): {error}")
 }
 
 /// Whether a station's runner, which hosts the tray, is up.
@@ -597,6 +479,7 @@ fn remove_state() -> Result<()> {
 mod tests {
     use super::*;
     use crate::cli::RadioArgs;
+    use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     #[test]
@@ -672,6 +555,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.process_kind, RadioProcessKind::Ffplay);
+    }
+
+    #[test]
+    fn legacy_playlist_runner_state_still_parses() {
+        // The retired playlist runner (`aphx`) wrote this kind. The file must still
+        // load so `status` and `stop` work instead of erroring on the state.
+        let state: RadioState = serde_json::from_str(
+            r#"{"pid":123,"start_time":456,"code":"aphx","description":"Aphex Twin albums","process_kind":"PlaylistRunner"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(state.process_kind, RadioProcessKind::PlaylistRunner);
     }
 
     #[test]
@@ -809,66 +704,6 @@ mod tests {
     }
 
     #[test]
-    fn playlist_failure_message_names_station_item_and_error() {
-        let message =
-            playlist_failure_message("aphx", 2, "https://example.test/watch", "yt-dlp failed");
-        assert!(message.contains("aphx"));
-        assert!(message.contains("item 2"));
-        assert!(message.contains("https://example.test/watch"));
-        assert!(message.contains("yt-dlp failed"));
-    }
-
-    #[test]
-    fn playlist_runner_randomizes_a_copy_of_station_urls() {
-        let mut randomized = randomized_playlist_urls("aphx").unwrap();
-        randomized.sort_unstable();
-
-        let mut expected = stations::playlist_urls("aphx").unwrap().to_vec();
-        expected.sort_unstable();
-
-        assert_eq!(randomized, expected);
-    }
-
-    #[test]
-    fn yt_dlp_failure_reports_the_reason_yt_dlp_printed() {
-        let stderr = b"[youtube] Extracting URL: https://example.test/watch\n\
-                      [youtube] X4VbdwhkE10: Downloading webpage\n\
-                      ERROR: [youtube] X4VbdwhkE10: This live stream recording is not available.\n";
-
-        assert_eq!(
-            yt_dlp_reason(stderr),
-            "[youtube] X4VbdwhkE10: This live stream recording is not available."
-        );
-    }
-
-    #[test]
-    fn yt_dlp_failure_without_an_error_line_keeps_the_last_output() {
-        assert_eq!(
-            yt_dlp_reason(b"[youtube] X4VbdwhkE10: Downloading webpage\nWARNING: no formats\n"),
-            "[youtube] X4VbdwhkE10: Downloading webpage"
-        );
-    }
-
-    #[test]
-    fn yt_dlp_failure_without_any_output_still_explains_itself() {
-        assert_eq!(yt_dlp_reason(b"\n"), "yt-dlp reported no reason");
-    }
-
-    #[test]
-    fn youtube_resolution_requests_audio_only_for_radio() {
-        assert_eq!(
-            youtube_stream_url_args("https://www.youtube.com/watch?v=oR4gjzXs5EE"),
-            [
-                "-g",
-                "--no-playlist",
-                "-f",
-                "bestaudio",
-                "https://www.youtube.com/watch?v=oR4gjzXs5EE",
-            ]
-        );
-    }
-
-    #[test]
     fn respawn_backoff_escalates_and_caps_at_thirty_seconds() {
         assert_eq!(respawn_backoff(0), Duration::from_secs(2));
         assert_eq!(respawn_backoff(1), Duration::from_secs(5));
@@ -981,7 +816,6 @@ mod tests {
             code: "fx404",
             name: "fixture 404 station",
             url,
-            kind: StationKind::Direct,
             tags: &[],
         };
         let runner =
@@ -1034,7 +868,6 @@ mod tests {
             code: "fxpz",
             name: "fixture pause station",
             url,
-            kind: StationKind::Direct,
             tags: &[],
         };
         let playback = Arc::new(Playback::default());

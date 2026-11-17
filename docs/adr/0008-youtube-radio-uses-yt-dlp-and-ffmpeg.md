@@ -1,6 +1,6 @@
 # YouTube Radio Uses yt-dlp and ffplay
 
-Status: Superseded by ADR-0002
+Status: Superseded by ADR-0002; the YouTube radio stations were removed by ADR-0031; the YouTube radio stations were removed by ADR-0031
 
 YouTube-backed `lum radio` stations are treated as normal built-in radio stations at the CLI layer. Current radio playback resolves YouTube station page URLs with `yt-dlp -g --no-playlist`, then gives the resolved media URL to `ffplay`.
 

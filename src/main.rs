@@ -50,7 +50,6 @@ fn run(cli: Cli) -> Result<()> {
             print!("{}", Cli::completion_script(shell.into()));
             Ok(())
         }
-        Commands::RadioPlaylistRunner { code } => radio::run_playlist_runner(code),
         Commands::RadioDirectRunner { code } => radio::run_direct_runner(code),
         Commands::GitCredential { .. } => unreachable!("credential helper handled before logging"),
         Commands::Backup { command } => backup::run(command),

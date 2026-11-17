@@ -1,6 +1,6 @@
 # Radio Stations Self-Heal Stream Failures
 
-Status: Accepted
+Status: Accepted (YouTube stream resolution removed by ADR-0031)
 
 ## Context
 
@@ -13,10 +13,8 @@ Users experienced this as "sometimes audio stops", with manual restart of the st
 Layer three recovery mechanisms, all inside the external-player adapter, per ADR-0002's preference to extend the adapter before adding new playback machinery:
 
 1. Every ffplay invocation gets `-rw_timeout 15000000`: a connection that delivers no data for 15 seconds errors out instead of blocking forever.
-2. Live stations additionally run with `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`. The HTTP layer then re-establishes dropped or timed-out connections transparently; probing confirmed ffplay sustains playback across repeated server-side force-closes with no audible gap and no process exit.
-3. A hidden `__radio_direct_runner` supervisor loops ffplay for direct and YouTube stations. `-autoexit` makes each attempt observable; on exit the runner respawns with escalating backoff (2s, 5s, 15s, then 30s capped), re-resolving YouTube stream URLs through yt-dlp on every attempt so expired URLs heal themselves; a failed resolution (e.g. a transient yt-dlp error) counts as a failed attempt and backs off rather than killing the runner. A session lasting at least 60 seconds resets the failure streak. After 5 consecutive short-lived failures the runner sends a desktop notification, logs the failure to the rotating tracing log, and exits, so `status` truthfully reports `stopped`.
-
-Playlist stations keep the separate `__radio_playlist_runner` without the reconnect flags: playlist advancement depends on observing track EOF, and `-reconnect_streamed` would swallow EOF for sources without a known length.
+2. Every station additionally runs with `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`. The HTTP layer then re-establishes dropped or timed-out connections transparently; probing confirmed ffplay sustains playback across repeated server-side force-closes with no audible gap and no process exit.
+3. A hidden `__radio_direct_runner` supervisor loops ffplay for a station. `-autoexit` makes each attempt observable; on exit the runner respawns with escalating backoff (2s, 5s, 15s, then 30s capped). A failed attempt backs off rather than killing the runner. A session lasting at least 60 seconds resets the failure streak. After 5 consecutive short-lived failures the runner sends a desktop notification, logs the failure to the rotating tracing log, and exits, so `status` truthfully reports `stopped`.
 
 ## Consequences
 

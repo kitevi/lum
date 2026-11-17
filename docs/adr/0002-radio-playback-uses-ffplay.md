@@ -1,6 +1,6 @@
 # Radio Playback Uses ffplay
 
-Status: Accepted
+Status: Accepted (YouTube station resolution removed by ADR-0031)
 
 ## Context
 
@@ -25,7 +25,6 @@ Use `ffplay` as the playback adapter for `lum radio`.
 Lum owns:
 
 - station catalog and CLI routing
-- resolving YouTube stations through `yt-dlp -g --no-playlist`
 - starting/stopping an `ffplay` process
 - storing lightweight playback state in the platform-native state directory
 

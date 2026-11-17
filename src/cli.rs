@@ -30,9 +30,6 @@ pub enum Commands {
         #[usage(value_enum)]
         shell: CompletionShell,
     },
-    /// Internal radio playlist loop runner.
-    #[usage(name = "__radio_playlist_runner", hide)]
-    RadioPlaylistRunner { code: String },
     /// Internal radio station loop runner.
     #[usage(name = "__radio_direct_runner", hide)]
     RadioDirectRunner { code: String },
@@ -398,7 +395,6 @@ mod tests {
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }
-            | Commands::RadioPlaylistRunner { .. }
             | Commands::RadioDirectRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
@@ -424,7 +420,6 @@ mod tests {
             Commands::Backup { .. }
             | Commands::Env { .. }
             | Commands::Completions { .. }
-            | Commands::RadioPlaylistRunner { .. }
             | Commands::RadioDirectRunner { .. }
             | Commands::GitCredential { .. }
             | Commands::Tools { .. }
@@ -488,14 +483,5 @@ mod tests {
     fn spec_is_valid() {
         let spec: usage_parser::Spec = Cli::to_kdl().parse().unwrap();
         let _ = spec;
-    }
-
-    #[test]
-    fn parses_hidden_radio_playlist_runner() {
-        let cli = parse(&["__radio_playlist_runner", "aphx"]);
-        match cli.command {
-            Commands::RadioPlaylistRunner { code } => assert_eq!(code, "aphx"),
-            _ => panic!("expected hidden radio playlist runner command"),
-        }
     }
 }

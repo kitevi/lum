@@ -15,7 +15,7 @@
 
 ## Station Catalog
 
-Each entry in `stations.rs` carries a code, a standalone name, a stream URL, a kind, and a list of tags. Tags (genre, mood, `live`, `playlist`) replace the old genre grouping and long descriptions to keep the listing compact; every station needs at least one.
+Each entry in `stations.rs` carries a code, a standalone name, a direct stream URL, and a list of tags. Tags (genre, mood, `live`) replace the old genre grouping and long descriptions to keep the listing compact; every station needs at least one.
 
 Names must stand alone because `playing` and `status` print only the code and name. Retiring a station needs no state migration: `status` prints the remembered name, and `rand` excludes a remembered code whether or not it is still in the catalog.
 
@@ -25,7 +25,7 @@ The RadCap entries use raw IP URLs, so they are the catalog entries most likely 
 
 `rand` is a reserved selector code, not a catalog entry:
 
-- The pool is every station in `stations::all()`, drawn uniformly. Station kind is ignored, so YouTube and playlist stations are eligible.
+- The pool is every station in `stations::all()`, drawn uniformly.
 - The station remembered in `radio-player.json` is excluded by code, whether or not its process is still alive. Resolution reads that state before playback is stopped, so a failed draw leaves the current station alone.
 - If exclusion would empty the pool, resolution fails rather than replaying the current station.
 - `lum radio list` prints the station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
@@ -35,17 +35,15 @@ The RadCap entries use raw IP URLs, so they are the catalog entries most likely 
 
 Radio playback uses the existing ffmpeg dependency path:
 
-- Direct and YouTube stations run under a hidden `__radio_direct_runner` supervisor process that loops `ffplay` until stopped.
-- `yt-dlp` resolves YouTube live station pages to stream URLs; the runner re-resolves on every playback attempt so expired stream URLs heal themselves.
-- `ffplay` then plays the resolved YouTube stream URL.
-- Playlist stations keep the separate `__radio_playlist_runner` loop, which must see track EOF to advance and therefore does not use the reconnect flags.
+- A station runs under a hidden `__radio_direct_runner` supervisor process that loops `ffplay` until stopped.
+- `ffplay` plays the station's stream URL directly; radio never resolves a page URL.
 
 `ffplay` recovery arguments (see ADR-0014):
 
 - `-autoexit` so the supervisor can observe the end of an attempt and decide to respawn.
 - `-rw_timeout 15000000` so a connection that delivers no data for 15 seconds errors out instead of blocking forever.
-- Live stations additionally get `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`, which heals dropped and stalled connections in-process without leaving silence.
-- Live stations also get `-infbuf -af adelay=delays=5000:all=1` (see ADR-0020): 5s of leading silence while an uncapped input queue fills, so streams that arrive at exactly realtime (the RadCap hosts) can jitter without audible gaps.
+- Every station gets `-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5`, which heals dropped and stalled connections in-process without leaving silence.
+- Every station also gets `-infbuf -af adelay=delays=5000:all=1` (see ADR-0020): 5s of leading silence while an uncapped input queue fills, so streams that arrive at exactly realtime (the RadCap hosts) can jitter without audible gaps.
 - ffplay runs at `-loglevel warning`, and the runner forwards its stderr to `lum.log` as `warn` events. Healthy streams log nothing.
 
 `ffplay` is preferred from `$PATH`. If it is not on `$PATH`, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary.
@@ -57,7 +55,7 @@ The old pure-Rust foreground audio path is no longer the product direction for `
 While a station runner is alive it shows a system tray icon (ADR-0022) whose menu holds the `Stop <station>` / `Play <station>` toggle, a `Stations` submenu, `Random station` and `Quit radio`. The tray is an extra, not a requirement: if it cannot be created, the runner logs a warning and keeps playing.
 
 - The runner's main thread owns the tray and every menu object; the supervisor runs on a worker thread that starts first. They share only `Playback` (`playback.rs`): the pause flag and the running ffplay. Never touch tray or menu objects from the worker: macOS requires the main thread, and release builds use `panic = "abort"`, so a panic would take playback down with it.
-- Stop kills ffplay and leaves the runner idle. Play respawns it with a fresh failure streak. A pause is not a stream failure: it never backs off or counts toward giving up. Backoff sleeps wake early on a pause. Playlist stations replay the current track on resume. Resume rejoins the live stream, so ADR-0020's 5s of leading silence applies again.
+- Stop kills ffplay and leaves the runner idle. Play respawns it with a fresh failure streak. A pause is not a stream failure: it never backs off or counts toward giving up. Backoff sleeps wake early on a pause. Resume rejoins the live stream, so ADR-0020's 5s of leading silence applies again.
 - The tray stays visible while paused, because that is how Play works. `lum radio stop`, `Quit radio`, starting another station, or the runner giving up removes it.
 - `Stations` lists the whole catalog in `lum radio list` order; the current station is checked and inert. Picking another one, or `Random station` (same rules as `lum radio rand`), does what the CLI does without a terminal: the runner starts the new station's runner, records it in `radio-player.json`, then silences itself and exits. The successor starts first, so a failed start leaves the current station playing. The new runner brings its own tray; the menu of a live tray never changes station.
 - `Quit radio` is `lum radio stop` from the tray: the runner removes the state file if it still names its own PID, kills its ffplay and exits, so `status` reports `stopped`.
@@ -68,9 +66,7 @@ While a station runner is alive it shows a system tray icon (ADR-0022) whose men
 
 ## Supported Streams
 
-Built-in direct stations are passed to `ffplay` as URLs. YouTube live stations are supported when yt-dlp can resolve the page URL and ffplay can play the resulting stream or HLS playlist. Some RadCap and NTS endpoints serve ADTS AAC (`audio/aacp`); `ffplay` decodes it with no extra configuration.
-
-The `ytlf` station points at the channel `/live` URL (`https://www.youtube.com/@LofiGirl/live`), so yt-dlp resolves whatever Lofi Girl currently features live and the station survives their 24/7 stream rotations. Do not point it back at a `watch?v=` video URL: those video IDs rot each time the channel rotates its streams.
+Built-in stations are passed to `ffplay` as URLs. Some RadCap and NTS endpoints serve ADTS AAC (`audio/aacp`); `ffplay` decodes it with no extra configuration.
 
 Out of scope unless a real station requires it:
 
@@ -82,12 +78,11 @@ Out of scope unless a real station requires it:
 
 Controls are process-backed, not terminal-key backed:
 
-- Direct and YouTube stations remember the supervisor runner process; `stop` kills the runner tree (runner plus its ffplay child) and clears state.
+- Stations remember the supervisor runner process; `stop` kills the runner tree (runner plus its ffplay child) and clears state.
 - `status` reports `playing` while the remembered runner process is alive and not paused, meaning it is actively playing or retrying with backoff, and `paused` while the tray has playback stopped.
-- After 5 consecutive short-lived playback attempts (a session shorter than 60 seconds resets the streak), the runner gives up, sends a desktop notification, logs the failure, and exits; the next `status` then reports `stopped`. Failed yt-dlp resolutions count as failed attempts and back off like any other failure.
+- After 5 consecutive short-lived playback attempts (a session shorter than 60 seconds resets the streak), the runner gives up, sends a desktop notification, logs the failure, and exits; the next `status` then reports `stopped`.
 - Runner diagnostics (attempt failures, respawn decisions, ffplay warnings) go to the rotating `lum.log` in lum's log directory, not the terminal, because the runner runs detached with nulled stdio.
 - Starting a new station stops the remembered process and starts the new station.
-- Playlist stations keep the pre-existing runner semantics, plus the tray pause.
 
 State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered runner PID and process start time when available, and `paused`. The runner itself updates `paused` when the tray toggles, only if the file names its own PID, and every write replaces the file atomically so a concurrent `status` never reads half a file. Legacy state files written before runners existed remember an ffplay PID directly and still work; files without `paused` read as not paused.
 
@@ -113,7 +108,7 @@ LUM_RADIO_PLAYBACK_TESTS=1 cargo test radio::
 
 They drive the real ffplay spawn path against a local fixture server that drops, stalls, or 404s connections, and assert the recovery behavior (transparent reconnect, runner respawn).
 
-Manual live-stream testing requires `ffplay` and, for YouTube stations, `yt-dlp`:
+Manual live-stream testing requires `ffplay`:
 
 ```sh
 cargo run -- radio dron

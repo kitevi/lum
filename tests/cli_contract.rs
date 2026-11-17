@@ -71,7 +71,7 @@ fn help_prints_public_commands_and_hides_internal_ones() {
         .stdout(predicates::str::contains("radio"))
         .stdout(predicates::str::contains("git-id"))
         .stdout(predicates::str::contains("__completions").not())
-        .stdout(predicates::str::contains("__radio_playlist_runner").not())
+        .stdout(predicates::str::contains("__radio_direct_runner").not())
         .stdout(predicates::str::contains("__git_credential").not());
 }
 
@@ -96,7 +96,21 @@ fn radio_list_shows_station_tags_then_shows_the_random_selector() {
         .stdout(predicates::str::contains("concrète, acousmatic, collage"))
         .stdout(predicates::str::contains(
             "rand  Play a random built-in station",
-        ));
+        ))
+        .stdout(predicates::str::contains("ytlf").not())
+        .stdout(predicates::str::contains("aphx").not());
+}
+
+#[test]
+fn radio_rejects_a_removed_youtube_station() {
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["radio", "ytlf"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicates::str::contains("station not found: ytlf"))
+        .stderr(predicates::str::contains("conc  RadCap Musique Concrète"));
 }
 
 #[test]

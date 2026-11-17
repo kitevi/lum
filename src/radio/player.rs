@@ -43,18 +43,6 @@ impl ExternalPlayer {
         })
     }
 
-    pub(super) fn start_playlist(code: &str) -> Result<PlayerProcess> {
-        let exe = std::env::current_exe().context("failed to resolve lum executable")?;
-        let child = playlist_runner_command(exe, code)
-            .spawn()
-            .context("failed to start radio playlist runner")?;
-        let pid = child.id();
-        Ok(PlayerProcess {
-            pid,
-            start_time: process_start_time(pid),
-        })
-    }
-
     pub(super) fn is_alive(pid: u32, start_time: Option<u64>) -> bool {
         process_alive(pid, start_time)
     }
@@ -71,26 +59,14 @@ impl ExternalPlayer {
         kill_pid_any(pid, start_time);
     }
 
+    /// Runs ffplay on `url` until it exits, registered with `playback` so a pause
+    /// from the tray can kill it. A pause ends the session as `Outcome::Paused`,
+    /// not as a failure. The reconnect arguments let dropped or stalled
+    /// connections heal without exiting.
     pub(super) fn play_until_exit(url: String, playback: &Playback) -> Result<Outcome> {
-        Self::play_ffplay_until_exit(ffplay_command, url, playback)
-    }
-
-    /// Like `play_until_exit`, but with live-stream reconnect recovery so
-    /// dropped or stalled connections heal without exiting.
-    pub(super) fn play_live_until_exit(url: String, playback: &Playback) -> Result<Outcome> {
-        Self::play_ffplay_until_exit(live_stream_ffplay_command, url, playback)
-    }
-
-    /// Runs ffplay until it exits, registered with `playback` so a pause from the
-    /// tray can kill it. A pause ends the session as `Outcome::Paused`, not as a failure.
-    fn play_ffplay_until_exit(
-        build_command: impl Fn(String, &str) -> Command,
-        url: String,
-        playback: &Playback,
-    ) -> Result<Outcome> {
         let ffplay = ffmpeg::resolve_ffplay()?;
         let ffplay = ffplay.to_string_lossy().into_owned();
-        let mut command = build_command(ffplay, &url);
+        let mut command = ffplay_command(ffplay, &url);
         command.stderr(Stdio::piped());
         let child = Arc::new(SharedChild::spawn(&mut command).context("failed to start ffplay")?);
         if !playback.attach(Arc::clone(&child)) {
@@ -124,22 +100,25 @@ impl ExternalPlayer {
     }
 }
 
+/// ffplay command for a station stream. Adds transparent reconnect behavior so
+/// dropped or stalled connections heal in-process without leaving silence, and a
+/// startup cushion (see ADR-0020): `-infbuf` lifts ffplay's ~1s input queue cap
+/// and the initial `adelay` lets that queue fill while silence plays, so servers
+/// that send at exactly realtime can jitter without gaps.
 pub(super) fn ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> Command {
-    ffplay_command_with(ffplay, url, &[])
-}
-
-/// ffplay command for live streams: adds transparent reconnect behavior so
-/// dropped or stalled connections heal in-process without leaving silence,
-/// and a startup cushion (see ADR-0020): `-infbuf` lifts ffplay's ~1s input
-/// queue cap and the initial `adelay` lets that queue fill while silence
-/// plays, so servers that send at exactly realtime can jitter without gaps.
-/// Only used for live stations; playlist playback must see track EOF to
-/// advance, so it uses the base command.
-fn live_stream_ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) -> Command {
-    ffplay_command_with(
-        ffplay,
-        url,
-        &[
+    let mut command = Command::new(ffplay);
+    command
+        .args([
+            "-nodisp",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            // Exit at end of stream so a supervisor can decide to respawn.
+            "-autoexit",
+            // Give up on a connection that delivers no data for 15s instead of
+            // blocking forever on a stalled stream.
+            "-rw_timeout",
+            "15000000",
             "-reconnect",
             "1",
             "-reconnect_streamed",
@@ -149,32 +128,8 @@ fn live_stream_ffplay_command(ffplay: impl AsRef<std::ffi::OsStr>, url: &str) ->
             "-infbuf",
             "-af",
             "adelay=delays=5000:all=1",
-        ],
-    )
-}
-
-fn ffplay_command_with(
-    ffplay: impl AsRef<std::ffi::OsStr>,
-    url: &str,
-    extra_args: &[&str],
-) -> Command {
-    let mut command = Command::new(ffplay);
-    let mut args = vec![
-        "-nodisp",
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        // Exit at end of stream so a supervisor can decide to respawn.
-        "-autoexit",
-        // Give up on a connection that delivers no data for 15s instead of
-        // blocking forever on a stalled stream.
-        "-rw_timeout",
-        "15000000",
-    ];
-    args.extend_from_slice(extra_args);
-    args.push(url);
-    command
-        .args(args)
+            url,
+        ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -185,16 +140,6 @@ fn station_runner_command(exe: impl AsRef<Path>, code: &str) -> Command {
     let mut command = Command::new(exe.as_ref());
     command
         .args(["__radio_direct_runner", code])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    command
-}
-
-fn playlist_runner_command(exe: impl AsRef<Path>, code: &str) -> Command {
-    let mut command = Command::new(exe.as_ref());
-    command
-        .args(["__radio_playlist_runner", code])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -460,29 +405,6 @@ mod tests {
                 "-autoexit",
                 "-rw_timeout",
                 "15000000",
-                "https://example.test/stream"
-            ]
-        );
-    }
-
-    #[test]
-    fn live_stream_ffplay_command_adds_reconnect_recovery_args() {
-        let command = live_stream_ffplay_command("ffplay", "https://example.test/live");
-        let args: Vec<_> = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert_eq!(
-            args,
-            [
-                "-nodisp",
-                "-hide_banner",
-                "-loglevel",
-                "warning",
-                "-autoexit",
-                "-rw_timeout",
-                "15000000",
                 "-reconnect",
                 "1",
                 "-reconnect_streamed",
@@ -492,20 +414,9 @@ mod tests {
                 "-infbuf",
                 "-af",
                 "adelay=delays=5000:all=1",
-                "https://example.test/live"
+                "https://example.test/stream"
             ]
         );
-    }
-
-    #[test]
-    fn playlist_runner_command_invokes_hidden_top_level_command() {
-        let command = playlist_runner_command("/bin/lum", "aphx");
-        let args: Vec<_> = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert_eq!(args, ["__radio_playlist_runner", "aphx"]);
     }
 
     #[test]
@@ -533,7 +444,7 @@ mod tests {
 
     fn spawn_probe_ffplay(url: &str) -> Result<PlayerProcess> {
         let ffplay = ffmpeg::resolve_ffplay()?;
-        let child = live_stream_ffplay_command(ffplay, url)
+        let child = ffplay_command(ffplay, url)
             .spawn()
             .context("failed to start ffplay probe")?;
         let pid = child.id();

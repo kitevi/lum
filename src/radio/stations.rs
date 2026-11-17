@@ -1,16 +1,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StationKind {
-    Direct,
-    YouTube,
-    YouTubePlaylist,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Station {
     pub code: &'static str,
     pub name: &'static str,
     pub url: &'static str,
-    pub kind: StationKind,
     pub tags: &'static [&'static str],
 }
 
@@ -22,120 +14,91 @@ const STATIONS: &[Station] = &[
         code: "conc",
         name: "RadCap Musique Concrète",
         url: "http://213.141.131.10:8000/musiqueconcrete",
-        kind: StationKind::Direct,
         tags: &["concrète", "acousmatic", "collage"],
     },
     Station {
         code: "expr",
         name: "RadCap Experimental",
         url: "http://79.111.119.111:8004/experimentalmusic",
-        kind: StationKind::Direct,
         tags: &["experimental"],
     },
     Station {
         code: "impr",
         name: "RadCap Free Improvisation",
         url: "http://79.111.119.111:8000/avantgardejazz",
-        kind: StationKind::Direct,
         tags: &["free improv", "avant-garde jazz"],
     },
     Station {
         code: "cavt",
         name: "RadCap Classical Avant-garde",
         url: "http://213.141.131.10:8004/classavant",
-        kind: StationKind::Direct,
         tags: &["avant-garde", "classical", "modernist"],
     },
     Station {
         code: "mini",
         name: "RadCap Minimalism",
         url: "http://213.141.131.10:8000/minimalism",
-        kind: StationKind::Direct,
         tags: &["minimalism"],
     },
     Station {
         code: "dron",
         name: "SomaFM Drone Zone",
         url: "https://ice1.somafm.com/dronezone-128-mp3",
-        kind: StationKind::Direct,
         tags: &["drone", "ambient"],
     },
     Station {
         code: "rdrn",
         name: "RadCap Drone Ambient",
         url: "http://79.111.119.111:8000/droneambient",
-        kind: StationKind::Direct,
         tags: &["drone", "ambient"],
     },
     Station {
         code: "dark",
         name: "SomaFM Dark Zone",
         url: "https://ice1.somafm.com/darkzone-128-mp3",
-        kind: StationKind::Direct,
         tags: &["dark ambient", "soundscape"],
     },
     Station {
         code: "ritl",
         name: "RadCap Dark/Ritual Ambient",
         url: "http://79.120.39.202:8000/darkambient",
-        kind: StationKind::Direct,
         tags: &["dark ambient", "ritual"],
     },
     Station {
         code: "dsp1",
         name: "SomaFM Deep Space One",
         url: "https://ice1.somafm.com/deepspaceone-128-mp3",
-        kind: StationKind::Direct,
         tags: &["space", "ambient"],
     },
     Station {
         code: "slow",
         name: "NTS Slow Focus",
         url: "https://stream-mixtape-geo.ntslive.net/mixtape",
-        kind: StationKind::Direct,
         tags: &["experimental", "slow"],
     },
     Station {
         code: "fiel",
         name: "NTS Field Recordings",
         url: "https://stream-mixtape-geo.ntslive.net/mixtape23",
-        kind: StationKind::Direct,
         tags: &["field recordings"],
     },
     Station {
         code: "pond",
         name: "Wave Farm Pond Station",
         url: "https://audio.wavefarm.org/pondstation.mp3",
-        kind: StationKind::Direct,
         tags: &["field recordings", "hydrophone", "live"],
     },
     Station {
         code: "n5md",
         name: "SomaFM n5MD Radio",
         url: "https://ice1.somafm.com/n5md-128-mp3",
-        kind: StationKind::Direct,
         tags: &["electronic", "idm"],
     },
     Station {
         code: "arab",
         name: "Arab Mix FM",
         url: "https://stream.zeno.fm/na3vpvn10qruv.acc",
-        kind: StationKind::Direct,
         tags: &["arabic", "world"],
-    },
-    Station {
-        code: "ytlf",
-        name: "Lofi Girl",
-        url: "https://www.youtube.com/@LofiGirl/live",
-        kind: StationKind::YouTube,
-        tags: &["lo-fi", "live"],
-    },
-    Station {
-        code: "aphx",
-        name: "Aphex Twin albums",
-        url: "playlist:aphx",
-        kind: StationKind::YouTubePlaylist,
-        tags: &["electronic", "idm", "playlist"],
     },
 ];
 
@@ -165,16 +128,6 @@ pub fn eligible_stations(exclude_code: Option<&str>) -> Vec<&'static Station> {
         .iter()
         .filter(|station| Some(station.code) != exclude_code)
         .collect()
-}
-
-pub fn playlist_urls(code: &str) -> Option<&'static [&'static str]> {
-    match code {
-        "aphx" => Some(&[
-            "https://www.youtube.com/watch?v=oR4gjzXs5EE",
-            "https://www.youtube.com/watch?v=Xw5AiRVqfqk",
-        ]),
-        _ => None,
-    }
 }
 
 /// A `lum radio` command that dispatches to code rather than to a stream.
@@ -233,7 +186,7 @@ mod tests {
             codes,
             [
                 "conc", "expr", "impr", "cavt", "mini", "dron", "rdrn", "dark", "ritl", "dsp1",
-                "slow", "fiel", "pond", "n5md", "arab", "ytlf", "aphx",
+                "slow", "fiel", "pond", "n5md", "arab",
             ]
         );
     }
@@ -257,7 +210,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len() - 1);
         assert_eq!(eligible.first().map(|station| station.code), Some("expr"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("aphx"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("arab"));
         assert!(eligible.iter().all(|station| station.code != "conc"));
     }
 
@@ -274,7 +227,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len());
         assert_eq!(eligible.first().map(|station| station.code), Some("conc"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("aphx"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("arab"));
     }
 
     #[test]
@@ -291,7 +244,7 @@ mod tests {
 
         assert_eq!(observed_len, eligible.len());
         assert_eq!(first.map(|station| station.code), Some("expr"));
-        assert_eq!(last.map(|station| station.code), Some("aphx"));
+        assert_eq!(last.map(|station| station.code), Some("arab"));
     }
 
     #[test]
@@ -320,35 +273,8 @@ mod tests {
     #[test]
     fn retained_stations_keep_their_tags() {
         assert!(find("arab").unwrap().tags.contains(&"world"));
-        assert!(find("ytlf").unwrap().tags.contains(&"lo-fi"));
-        assert!(find("aphx").unwrap().tags.contains(&"idm"));
-    }
-
-    #[test]
-    fn finds_youtube_station_by_code() {
-        let station = find("ytlf").expect("ytlf station should exist");
-        assert_eq!(station.kind, StationKind::YouTube);
-    }
-
-    #[test]
-    fn ytlf_follows_the_channel_featured_live_stream() {
-        let station = find("ytlf").expect("ytlf station should exist");
-        assert_eq!(station.url, "https://www.youtube.com/@LofiGirl/live");
-        assert_eq!(station.kind, StationKind::YouTube);
-    }
-
-    #[test]
-    fn aphx_station_is_a_youtube_playlist_with_clean_album_urls() {
-        let station = find("aphx").expect("aphx station should exist");
-        assert_eq!(station.kind, StationKind::YouTubePlaylist);
-        assert_eq!(station.name, "Aphex Twin albums");
-        assert_eq!(
-            playlist_urls("aphx").expect("aphx playlist should have urls"),
-            &[
-                "https://www.youtube.com/watch?v=oR4gjzXs5EE",
-                "https://www.youtube.com/watch?v=Xw5AiRVqfqk",
-            ]
-        );
+        assert!(find("dron").unwrap().tags.contains(&"ambient"));
+        assert!(find("pond").unwrap().tags.contains(&"live"));
     }
 
     #[test]

@@ -52,7 +52,7 @@ Options considered:
 - ADR-0010's two-state lifecycle no longer holds: a loaded station is playing or paused. The runner owns the flag and nothing is added to the CLI. ADR-0002 still holds: ffplay plays the audio.
 - Resume rejoins the live stream, so ADR-0020's 5s of leading silence returns each time.
 - The icon needs a tray host. Stock GNOME has none without the AppIndicator extension; without a host the icon is invisible and playback is unaffected.
-- A switch removes the icon and shows a new one, because it belongs to a new process. For an instant both runners exist; a live station's 5s of leading silence covers it. A playlist runner resolving a track when it exits leaves that yt-dlp to finish.
+- A switch removes the icon and shows a new one, because it belongs to a new process. For an instant both runners exist; a live station's 5s of leading silence covers it.
 - For up to 2 seconds after a station starts or stops, both icons can show, or the display's lines can be missing. A change of mode shows within 10 seconds. A display tray that leaves because HiDPI came back on checks the modes once more after releasing its lock and starts a new one if they are off again, so a `lum display off` racing its exit still gets an icon. A display tray whose monitors are all unplugged stays, hidden, until one returns or the session ends.
 - On macOS, after the menu bar turns light or dark while the radio plays, the icon can keep the old tint for up to 2 seconds.
 - Only macOS has display lines; on Linux and Windows the tray is the radio's alone.

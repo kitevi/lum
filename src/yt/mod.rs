@@ -2,8 +2,6 @@ pub mod args;
 mod deps;
 pub mod rss;
 
-pub(crate) use deps::resolve_yt_dlp;
-
 use std::path::Path;
 
 use anyhow::{Context, Result};
