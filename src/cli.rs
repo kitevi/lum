@@ -92,6 +92,12 @@ pub enum Commands {
         #[usage(subcommand)]
         command: NetCommand,
     },
+    /// Sharp HiDPI text on external monitors, or off for games. (macOS)
+    Display {
+        /// Omit to show whether HiDPI is on.
+        #[usage(value_enum)]
+        state: Option<HidpiState>,
+    },
 }
 
 /// Shells accepted by the hidden `__completions` command.
@@ -361,6 +367,16 @@ pub enum FontCommand {
     /// Uninstall a managed font.
     Uninstall { font: String },
 }
+
+// Only the macOS build reads the state; elsewhere `lum display` refuses to run.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
+pub enum HidpiState {
+    /// Sharp HiDPI at about the monitor's own size.
+    On,
+    /// The monitor's plain resolution until you restart or log out: least GPU work, for games.
+    Off,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,7 +405,8 @@ mod tests {
             | Commands::Yt { .. }
             | Commands::Font { .. }
             | Commands::Vol { .. }
-            | Commands::Net { .. } => {
+            | Commands::Net { .. }
+            | Commands::Display { .. } => {
                 panic!("expected radio command")
             }
         }
@@ -413,7 +430,8 @@ mod tests {
             | Commands::Yt { .. }
             | Commands::Font { .. }
             | Commands::Vol { .. }
-            | Commands::Net { .. } => {
+            | Commands::Net { .. }
+            | Commands::Display { .. } => {
                 panic!("expected radio command")
             }
         }
@@ -442,6 +460,23 @@ mod tests {
                 }
             }
         ));
+    }
+
+    #[test]
+    fn parses_display_on() {
+        let cli = parse(&["display", "on"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Display {
+                state: Some(HidpiState::On)
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_display_without_a_state() {
+        let cli = parse(&["display"]);
+        assert!(matches!(cli.command, Commands::Display { state: None }));
     }
 
     #[test]

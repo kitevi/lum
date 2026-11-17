@@ -281,6 +281,20 @@ lum net test --seconds 60 --iface enp0s31f6
 
 See `src/net/README.md`.
 
+### Display (macOS)
+
+Sharp text on external monitors macOS doesn't treat as HiDPI, such as 27-inch 2560x1440 ones, and back to plain resolution for games. No helper app keeps running.
+
+```sh
+lum display on     # HiDPI at about the monitor's own size; the first time it asks for your password and a restart
+lum display off    # plain resolution until you restart or log out: least GPU work, for games
+lum display        # show which one is on
+```
+
+On Apple silicon, macOS won't do HiDPI at exactly the monitor's own size, so `on` uses the closest size under it: 2544x1431 on a 2560x1440 monitor and 1904x1071 on a 1920x1080 one. Everything looks 0.6% or 0.8% bigger than with HiDPI off, and `lum display` shows the difference.
+
+See `src/display/README.md`.
+
 ## Build from source
 
 You need Rust installed.

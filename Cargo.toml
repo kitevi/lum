@@ -58,9 +58,14 @@ backhand = { version = "0.25.5", default-features = false, features = ["gzip"] }
 [target.'cfg(any(windows, target_os = "macos"))'.dependencies]
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 
-# tray-icon's own examples nudge the main run loop after creating the status item.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop"] }
+# tray-icon's own examples nudge the main run loop after creating the status item. `lum display`
+# also builds a CFDictionary and reads the CFArrays CoreGraphics hands back.
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+# `lum display` lists and switches display modes (see ADR-0029).
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "libc", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }
+# `lum display on` writes the display override file.
+plist = "1.10.4"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

@@ -2,6 +2,7 @@ mod apps;
 mod artifact;
 mod backup;
 mod cli;
+mod display;
 mod env;
 mod ffmpeg;
 mod font;
@@ -62,5 +63,6 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Font { command } => font::run(command),
         Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
         Commands::Net { command } => net::run(command),
+        Commands::Display { state } => display::run(state),
     }
 }
