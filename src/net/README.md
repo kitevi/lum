@@ -69,6 +69,15 @@ lum itself never runs as root. It runs each root command through `sudo`, after o
 - Closing the terminal sends SIGHUP and leaves lum nowhere to print. `println!` panics then, which would end lum before it switches back, so everything that switches prints through `say!` and `say_err!`, which drop the line instead.
 - After the terminal is gone, switching back usually fails: sudo keeps its cached credentials per terminal by default (`timestamp_type=tty`), so it has to ask for the password again and has no terminal to ask on. Game mode then stays on until `lum net normal`.
 
+## Tray
+
+While game mode is on, a tray icon shows it (ADR-0033): a monitor whose screen is filled in blue, and the menu line `Game mode on for eth0 since 2026-11-12 20:00`. It is the status tray `lum display off` starts too; how it is hosted and drawn is in `src/tray/README.md`.
+
+- `game` starts it as soon as game mode is on, newly or already, through `tray::status::show`, so a tray that was killed comes back with the next `lum net game`. It runs in a process group of its own, so Ctrl+C or a closed terminal does not take it down, and it leaves by itself a few seconds after `normal`, a reboot or the end of a wrapped command has switched game mode off. `normal` has nothing to do for it.
+- The line comes from the same test as `status`: the record exists and the system agrees (`tray_line`). Looking for the record is cheap, and the tray does it on every 2-second watch; asking the system costs an `ifconfig -a` on macOS, so that part runs at most every 10 seconds. A tray that is already up for `lum display off` can therefore show the line up to 10 seconds late.
+- The icon only reports. Switching back needs sudo, and sudo needs a terminal, which a tray item cannot give.
+- Windows has no game mode, so no icon.
+
 ## Test Measurements
 
 - Latency is the time of a TCP handshake with `1.1.1.1:443`, every 250 ms. A handshake needs no root, unlike macOS `ping` below one-second intervals, and the reply queues behind the download like any other packet. A probe without an answer within a second counts as lost.
@@ -80,11 +89,12 @@ lum itself never runs as root. It runs each root command through `sudo`, after o
 
 ## Tests
 
-Parsers, interface choice and command lists are unit tested with fixtures, macOS ones included, so they run on Linux. `tests/net_cli.rs` covers the CLI surface without root or network.
+Parsers, interface choice, command lists and the tray's line are unit tested with fixtures, macOS ones included, so they run on Linux. `tests/net_cli.rs` covers the CLI surface without root or network.
 
 `tests/net_game_cli.rs` runs `lum net game`, bare and with a command, and `lum net normal` end to end against a fake `sudo` script on `PATH` and a fake `/sys/class/net` (`$LUM_NET_SYSFS`, a test hook). The fake sudo logs every command instead of running it, and the tests compare the log with the exact sequence lum must run. It also moves the fake link speed as ethtool would.
 
 - `$LUM_NET_LINK_TIMEOUT_MS` is a second test hook: it shortens the 15 s wait for the link, for the test of a link that never reaches 100 Mb/s.
+- `$LUM_NO_STATUS_TRAY` is a third: it keeps `game` from starting the status tray, so the tests put no icon on the desk. `the_status_tray_leaves_at_once_when_nothing_is_on` runs the hidden `lum __status_tray` with nothing in force and expects it to return without a tray host.
 - Two tests take the terminal away from a lum that is wrapping a command: they close its output pipes, so that printing fails as it does on a closed terminal, and send it SIGHUP. In one of them the fake sudo then refuses, as the real one does without a terminal.
 
 On real hardware, switching needs root and a real link, so it is tested by hand:
@@ -92,9 +102,9 @@ On real hardware, switching needs root and a real link, so it is tested by hand:
 ```sh
 lum net status
 lum net test
-lum net game
+lum net game        # a monitor icon with a blue screen appears; its menu reads "Game mode on for ..."
 lum net test        # expect 100 Mb/s and low bufferbloat
-lum net normal
+lum net normal      # the icon goes within a few seconds
 ```
 
-The macOS path has not been run on real hardware yet.
+The macOS path and the tray have not been run on real hardware yet.

@@ -25,6 +25,7 @@ The same cable is used by a Linux PC and a Mac.
 - **Root through sudo, per command.** lum stays unprivileged and runs only the switching commands through `sudo`, with credentials refreshed while a wrapped command runs.
 - **A record names what changed.** `net-game.json` holds the interface name and MAC before anything changes, so `normal` undoes it after a rename or replug, from another terminal, or after a crash. Whether game mode is still on is read from the system, so a record left behind by a reboot reads as off.
 - **`lum net test` measures instead of guessing.** It times TCP handshakes idle and under a three-server download and reads the interface's receive errors. The handshakes need no root on either system, unlike sub-second `ping` on macOS.
+- **A tray icon shows it** while it is on: `lum net game` starts the status tray (ADR-0033), which leaves once game mode is off.
 
 ## Consequences
 

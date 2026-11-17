@@ -71,7 +71,7 @@ esac"#,
         fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
-    fn envs(&self) -> [(&'static str, PathBuf); 4] {
+    fn envs(&self) -> [(&'static str, PathBuf); 5] {
         let path = format!(
             "{}:{}",
             self.path("bin").display(),
@@ -82,6 +82,8 @@ esac"#,
             ("XDG_STATE_HOME", self.path("state")),
             ("LUM_NET_SYSFS", self.path("sys")),
             ("LUM_FAKE_LOG", self.path("log")),
+            // No icon on the desk of whoever runs the tests.
+            ("LUM_NO_STATUS_TRAY", "1".into()),
         ]
     }
 
@@ -171,6 +173,16 @@ const SWITCH_OFF: [&str; 4] = [
     "sudo ip link del lumifb0",
     "sudo ethtool -s eth0 autoneg on",
 ];
+
+#[test]
+fn the_status_tray_leaves_at_once_when_nothing_is_on() {
+    let fake = Fake::new();
+    // No record, so no icon to wait for a tray host to show.
+    fake.lum(&["__status_tray"])
+        .timeout(Duration::from_secs(20))
+        .assert()
+        .success();
+}
 
 #[test]
 fn game_keeps_its_record_when_sudo_refuses_after_the_terminal_is_gone() {

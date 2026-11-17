@@ -1,5 +1,5 @@
 //! `lum display`: HiDPI on and off, and sRGB color, for monitors that aren't
-//! Retina, and the tray that shows HiDPI while it is off. macOS only. See
+//! Retina, and the status tray line that shows HiDPI while it is off. macOS only. See
 //! `README.md`.
 
 #[cfg(target_os = "macos")]
@@ -7,8 +7,6 @@ mod macos;
 mod modes;
 #[cfg(target_os = "macos")]
 mod srgb;
-#[cfg(target_os = "macos")]
-mod tray;
 
 use anyhow::Result;
 
@@ -32,38 +30,16 @@ pub fn run(command: Option<DisplayCommand>) -> Result<()> {
     }
 }
 
-/// Hosts the display tray (`__display_tray`), which `lum display off` starts.
-pub fn run_tray() -> Result<()> {
+/// A line for each monitor with HiDPI off, for the status tray: none when it is on
+/// everywhere, and `None` when no monitor can be read. Only macOS has any.
+pub(crate) fn off_lines() -> Option<Vec<String>> {
     #[cfg(target_os = "macos")]
     {
-        tray::run()
+        macos::off_lines()
     }
     #[cfg(not(target_os = "macos"))]
     {
-        unsupported()
-    }
-}
-
-/// The display tray's lines, for a station's tray to show while the display
-/// tray hides: none unless `lum display off` started it. The modes are read at
-/// most every 10 seconds, however often this is called.
-pub(crate) fn tray_lines() -> impl FnMut() -> Vec<String> {
-    #[cfg(target_os = "macos")]
-    {
-        let mut lines = tray::OffLines::default();
-        move || {
-            if tray::up() {
-                lines.get().unwrap_or_default()
-            } else {
-                // Read afresh once a display tray starts.
-                lines.forget();
-                Vec::new()
-            }
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Vec::new
+        Some(Vec::new())
     }
 }
 

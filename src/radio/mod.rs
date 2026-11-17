@@ -265,7 +265,7 @@ fn run_hosted(
     tray::host(
         tray::Radio { station, playback },
         move |request| handle_tray_request(station, &halt, request),
-        crate::display::tray_lines(),
+        tray::status::watch(),
         move || supervise(&supervisor),
     )
 }
@@ -409,7 +409,6 @@ fn notify_stream_lost(message: &str) {
 }
 
 /// Whether a station's runner, which hosts the tray, is up.
-#[cfg(target_os = "macos")]
 pub(crate) fn station_loaded() -> bool {
     read_state().ok().flatten().is_some_and(|state| {
         state.process_kind != RadioProcessKind::Ffplay && process_is_alive(&state)

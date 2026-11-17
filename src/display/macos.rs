@@ -67,7 +67,7 @@ pub(super) fn run(state: Option<HidpiState>) -> Result<()> {
         }
     }
     if matches!(state, Some(HidpiState::Off)) {
-        super::tray::show();
+        crate::tray::status::show();
     }
     ensure!(
         failed == 0,

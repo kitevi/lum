@@ -2,23 +2,27 @@
 //!
 //! A little radio while a station is loaded, and a monitor while `lum display` has HiDPI
 //! off. With both, a smaller radio sits over the monitor's bottom-right corner, cut out of
-//! it with a gap the way SF Symbols draws its badges, so it stays one square icon. Each
-//! shape is built from a few signed-distance shapes on a 16-unit grid (one unit is one pixel
-//! at the common 16 px tray size, so the main edges sit on whole units and stay crisp
-//! there). The radio's antenna is up while playing and folded away while paused, so the
-//! state shows in the silhouette and not only in the colour.
+//! it with a gap the way SF Symbols draws its badges, so it stays one square icon. While
+//! `lum net game` is on, the monitor's screen is lit: filled in blue, where it is a hole
+//! otherwise, with the radio over it or without. Filled against hollow is a difference that
+//! survives 16 px, which a picture inside the screen would not. Each shape is built from a
+//! few signed-distance shapes on a 16-unit grid (one unit is one pixel at the common 16 px
+//! tray size, so the main edges sit on whole units and stay crisp there). The radio's
+//! antenna is up while playing and folded away while paused, so the state shows in the
+//! silhouette and not only in the colour.
 //!
 //! Tray hosts paint the icon over a panel we cannot see, light or dark, so nothing here
 //! depends on the panel:
 //!
 //! - The colour ink uses mid-tone fills, with enough contrast against both dark and light
-//!   panels (see the tests), and the speaker, the knobs and the screen are holes that
+//!   panels (see the tests), and the speaker, the knobs and an unlit screen are holes that
 //!   take the panel's own colour. A faint white rim around the outside keeps the icon visible on mid-tone panels
 //!   and vanishes on light ones.
 //! - macOS draws only the alpha channel of a template image and tints it for the menu bar,
 //!   so the template ink is plain black and the system does the rest. A template has no
-//!   colour, so while the radio plays macOS gets the menu bar ink instead: what the system
-//!   would tint the template to, with the radio green.
+//!   colour, so while the radio plays, or the screen is lit, macOS gets the menu bar ink
+//!   instead: what the system would tint the template to, with the radio green and the lit
+//!   screen blue.
 
 /// The icon's width and height in pixels.
 pub(super) const SIZE: u32 = 64;
@@ -36,12 +40,18 @@ const BADGE_GAP: f32 = 1.0;
 const FOLDED_LIFT: f32 = 2.5;
 
 /// Fill colours, picked for contrast against both dark and light panels. The monitor takes
-/// the paused grey, so the green of a playing radio is the only colour in the icon.
+/// the paused grey, so the green of a playing radio and the blue of a lit screen are the only
+/// colours in the icon.
 const PLAYING: [u8; 3] = [0x1a, 0x8f, 0x4d];
 const PAUSED: [u8; 3] = [0x78, 0x7f, 0x8b];
+/// The lit screen of game mode. Blue, so that it never reads as the green of a playing radio.
+const GAME: [u8; 3] = [0x3b, 0x7d, 0xdd];
 /// Apple's system green in its accessible variants, for a light and a dark menu bar.
 const MENU_BAR_GREEN: [u8; 3] = [0x24, 0x8a, 0x3d];
 const MENU_BAR_GREEN_DARK: [u8; 3] = [0x30, 0xd1, 0x58];
+/// Apple's system blue, for a light and a dark menu bar.
+const MENU_BAR_BLUE: [u8; 3] = [0x00, 0x7a, 0xff];
+const MENU_BAR_BLUE_DARK: [u8; 3] = [0x0a, 0x84, 0xff];
 /// Width in grid units, and opacity, of the white rim around the colour ink's outline.
 const RIM_WIDTH: f32 = 0.6;
 const RIM_ALPHA: f32 = 0.35;
@@ -56,8 +66,8 @@ pub(super) enum Ink {
     /// Black with alpha, for macOS to tint for the menu bar.
     Template,
     /// What macOS would tint a template to on a light or a dark menu bar, black or white,
-    /// with a playing radio in Apple's green. A template can't hold colour, so macOS gets
-    /// this while the radio plays.
+    /// with a playing radio in Apple's green and a lit screen in Apple's blue. A template
+    /// can't hold colour, so macOS gets this while the radio plays or the screen is lit.
     MenuBar { dark: bool },
 }
 
@@ -68,11 +78,15 @@ pub(super) struct Look {
     pub(super) radio: Option<bool>,
     /// `lum display` has HiDPI off.
     pub(super) monitor: bool,
+    /// `lum net game` is on: the monitor is drawn, HiDPI off or not, with its screen lit.
+    pub(super) game: bool,
 }
 
 /// What covers one sample of the icon.
 enum Hit {
     Monitor,
+    /// The lit screen of game mode.
+    Screen,
     Radio,
     Rim,
     Empty,
@@ -117,30 +131,34 @@ fn radio(p: Point, antenna: bool) -> (f32, f32) {
     (silhouette.max(-holes), silhouette)
 }
 
-/// Signed distances at `p`, negative inside: `(monitor, silhouette)`. A frame around the
-/// screen, which is a hole, on a stand, centred on the grid like the playing radio.
-fn monitor(p: Point) -> (f32, f32) {
+/// Signed distances at `p`, negative inside: `(monitor, silhouette, screen)`. A frame around
+/// the screen, which is a hole, on a stand, centred on the grid like the playing radio. The
+/// screen's own distance is what game mode lights.
+fn monitor(p: Point) -> (f32, f32, f32) {
     let frame = rounded_box(p, (1.0, 1.75), (15.0, 11.75), 1.5);
     let neck = rounded_box(p, (7.0, 11.0), (9.0, 13.0), 0.0);
     let foot = rounded_box(p, (4.0, 12.75), (12.0, 14.25), 0.75);
     let silhouette = frame.min(neck).min(foot);
     let screen = rounded_box(p, (2.5, 3.25), (13.5, 10.25), 0.5);
-    (silhouette.max(-screen), silhouette)
+    (silhouette.max(-screen), silhouette, screen)
 }
 
-/// Signed distances at `p`, negative inside: `(monitor, silhouette)`. The monitor under the
-/// radio: no stand, which the radio would cut in two, and the screen filling the grid.
-fn badged_monitor(p: Point) -> (f32, f32) {
+/// Signed distances at `p`, negative inside: `(monitor, silhouette, screen)`. The monitor
+/// under the radio: no stand, which the radio would cut in two, and the screen filling the
+/// grid.
+fn badged_monitor(p: Point) -> (f32, f32, f32) {
     let silhouette = rounded_box(p, (0.5, 1.5), (15.5, 13.0), 1.75);
     let screen = rounded_box(p, (2.0, 3.0), (14.0, 11.5), 0.5);
-    (silhouette.max(-screen), silhouette)
+    (silhouette.max(-screen), silhouette, screen)
 }
 
 /// What covers grid point `p`.
 fn hit(look: Look, p: Point) -> Hit {
-    const NONE: (f32, f32) = (f32::INFINITY, f32::INFINITY);
-    let radio = match (look.radio, look.monitor) {
-        (None, _) => NONE,
+    const FAR: f32 = f32::INFINITY;
+    // Game mode lights the monitor's screen, so it draws the monitor whether HiDPI is off or not.
+    let with_monitor = look.monitor || look.game;
+    let radio = match (look.radio, with_monitor) {
+        (None, _) => (FAR, FAR),
         // Alone, the folded radio is drawn FOLDED_LIFT higher (sampling lower moves the shape
         // up): playing, the antenna balances the body about the grid centre, and folded the
         // body alone would sit low.
@@ -159,11 +177,11 @@ fn hit(look: Look, p: Point) -> Hit {
             (r * BADGE_SCALE, s * BADGE_SCALE)
         }
     };
-    let monitor = if !look.monitor {
-        NONE
+    let monitor = if !with_monitor {
+        (FAR, FAR, FAR)
     } else if look.radio.is_some() && radio.1 <= BADGE_GAP {
         // Cut away around the radio.
-        (f32::INFINITY, -f32::INFINITY)
+        (FAR, -FAR, FAR)
     } else if look.radio.is_some() {
         badged_monitor(p)
     } else {
@@ -174,6 +192,8 @@ fn hit(look: Look, p: Point) -> Hit {
         Hit::Radio
     } else if monitor.0 <= 0.0 {
         Hit::Monitor
+    } else if look.game && monitor.2 <= 0.0 {
+        Hit::Screen
     } else if on_rim(radio.1) || on_rim(monitor.1) {
         Hit::Rim
     } else {
@@ -186,16 +206,16 @@ pub(super) fn rgba(look: Look, ink: Ink) -> Vec<u8> {
     let samples = (SUPERSAMPLE * SUPERSAMPLE) as f32;
     let unit = GRID / SIZE as f32;
     let paused = look.radio == Some(true);
-    let (monitor_fill, radio_fill) = match ink {
-        Ink::Colour => (PAUSED, if paused { PAUSED } else { PLAYING }),
-        Ink::Template => ([0; 3], [0; 3]),
+    let (monitor_fill, radio_fill, screen_fill) = match ink {
+        Ink::Colour => (PAUSED, if paused { PAUSED } else { PLAYING }, GAME),
+        Ink::Template => ([0; 3], [0; 3], [0; 3]),
         Ink::MenuBar { dark } => {
-            let (tint, green) = if dark {
-                ([255; 3], MENU_BAR_GREEN_DARK)
+            let (tint, green, blue) = if dark {
+                ([255; 3], MENU_BAR_GREEN_DARK, MENU_BAR_BLUE_DARK)
             } else {
-                ([0; 3], MENU_BAR_GREEN)
+                ([0; 3], MENU_BAR_GREEN, MENU_BAR_BLUE)
             };
-            (tint, if paused { tint } else { green })
+            (tint, if paused { tint } else { green }, blue)
         }
     };
     let radio_strength = if paused && ink != Ink::Colour {
@@ -217,6 +237,7 @@ pub(super) fn rgba(look: Look, ink: Ink) -> Vec<u8> {
                     };
                     let (colour, opacity) = match hit(look, (at(x, sx), at(y, sy))) {
                         Hit::Monitor => (monitor_fill, 1.0),
+                        Hit::Screen => (screen_fill, 1.0),
                         Hit::Radio => (radio_fill, radio_strength),
                         Hit::Rim => ([255; 3], rim),
                         Hit::Empty => continue,
@@ -251,34 +272,35 @@ mod tests {
         Ink::MenuBar { dark: false },
         Ink::MenuBar { dark: true },
     ];
-    const LOOKS: [Look; 5] = [
-        Look {
-            radio: Some(false),
-            monitor: false,
-        },
-        Look {
-            radio: Some(true),
-            monitor: false,
-        },
-        Look {
-            radio: None,
-            monitor: true,
-        },
-        Look {
-            radio: Some(false),
-            monitor: true,
-        },
-        Look {
-            radio: Some(true),
-            monitor: true,
-        },
-    ];
+    /// The middle of the lit screen on its own, where the unlit one is a hole.
+    const SCREEN_CENTRE: (f32, f32) = (8.0, 6.75);
+
+    /// Every look the tray can show: no radio, a paused one or a playing one, each with and without
+    /// the monitor and the lit screen, except the look that draws nothing.
+    fn looks() -> Vec<Look> {
+        let mut looks = Vec::new();
+        for radio in [None, Some(true), Some(false)] {
+            for monitor in STATES {
+                for game in STATES {
+                    if radio.is_some() || monitor || game {
+                        looks.push(Look {
+                            radio,
+                            monitor,
+                            game,
+                        });
+                    }
+                }
+            }
+        }
+        looks
+    }
 
     fn radio_icon(paused: bool, ink: Ink) -> Vec<u8> {
         rgba(
             Look {
                 radio: Some(paused),
                 monitor: false,
+                game: false,
             },
             ink,
         )
@@ -289,6 +311,7 @@ mod tests {
             Look {
                 radio: None,
                 monitor: true,
+                game: false,
             },
             ink,
         )
@@ -299,6 +322,19 @@ mod tests {
             Look {
                 radio: Some(paused),
                 monitor: true,
+                game: false,
+            },
+            ink,
+        )
+    }
+
+    /// Game mode: the lit screen, alone or under a radio.
+    fn game_icon(radio: Option<bool>, ink: Ink) -> Vec<u8> {
+        rgba(
+            Look {
+                radio,
+                monitor: false,
+                game: true,
             },
             ink,
         )
@@ -356,7 +392,7 @@ mod tests {
 
     #[test]
     fn the_icon_is_one_square_in_every_look() {
-        for look in LOOKS {
+        for look in looks() {
             for ink in INKS {
                 assert_eq!(
                     rgba(look, ink).len(),
@@ -412,7 +448,7 @@ mod tests {
 
     #[test]
     fn the_icon_has_no_background_plate() {
-        for look in LOOKS {
+        for look in looks() {
             for ink in INKS {
                 let rgba = rgba(look, ink);
                 for (x, y) in [(0, 0), (SIZE - 1, 0), (0, SIZE - 1), (SIZE - 1, SIZE - 1)] {
@@ -442,6 +478,17 @@ mod tests {
                 alphas(&radio_icon(true, ink)),
                 "{ink:?}"
             );
+            // Game mode fills the screen, and the radio over it still folds.
+            assert_ne!(
+                alphas(&monitor_icon(ink)),
+                alphas(&game_icon(None, ink)),
+                "{ink:?} lit screen"
+            );
+            assert_ne!(
+                alphas(&game_icon(Some(false), ink)),
+                alphas(&game_icon(Some(true), ink)),
+                "{ink:?} radio over the lit screen"
+            );
         }
     }
 
@@ -470,9 +517,87 @@ mod tests {
     }
 
     #[test]
+    fn the_lit_screen_is_filled_where_the_unlit_one_is_a_hole() {
+        for ink in INKS {
+            assert_eq!(
+                pixel(&monitor_icon(ink), SCREEN_CENTRE)[3],
+                0,
+                "{ink:?} unlit"
+            );
+            assert_eq!(
+                pixel(&game_icon(None, ink), SCREEN_CENTRE)[3],
+                255,
+                "{ink:?} lit"
+            );
+        }
+    }
+
+    #[test]
+    fn the_lit_screen_is_blue_in_the_frame_of_the_stopped_grey() {
+        let lit = game_icon(None, Ink::Colour);
+        assert_eq!(pixel(&lit, SCREEN_CENTRE), [GAME[0], GAME[1], GAME[2], 255]);
+        assert_eq!(
+            pixel(&lit, (1.75, 6.75)),
+            [PAUSED[0], PAUSED[1], PAUSED[2], 255]
+        );
+        assert_ne!(
+            GAME, PLAYING,
+            "a lit screen must not read as a playing radio"
+        );
+    }
+
+    #[test]
+    fn game_mode_draws_the_monitor_whether_or_not_hidpi_is_off() {
+        for radio in [None, Some(false), Some(true)] {
+            for ink in INKS {
+                let lit = |monitor| {
+                    rgba(
+                        Look {
+                            radio,
+                            monitor,
+                            game: true,
+                        },
+                        ink,
+                    )
+                };
+                assert_eq!(lit(false), lit(true), "{radio:?} {ink:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_radio_over_the_lit_screen_keeps_its_gap_and_its_antenna_cue() {
+        // The lit screen far from the radio; the radio's solid body; a point of the screen inside
+        // the gap beside the body, beyond the rim; another inside the gap past the antenna's tip.
+        let lit = (4.0, 5.0);
+        let (body, beside_the_body) = (on_badge((2.0, 10.5)), (5.7, 11.0));
+        let past_the_tip = on_badge((3.77, 0.71));
+        for point in [beside_the_body, past_the_tip] {
+            assert!(
+                badged_monitor(point).2 < 0.0,
+                "the screen runs at {point:?} before the cut"
+            );
+        }
+        for ink in INKS {
+            let (playing, paused) = (game_icon(Some(false), ink), game_icon(Some(true), ink));
+            for drawing in [&playing, &paused] {
+                assert_eq!(pixel(drawing, lit)[3], 255, "{ink:?} lit");
+                assert!(pixel(drawing, body)[3] > 0, "{ink:?} radio");
+                assert_eq!(pixel(drawing, beside_the_body)[3], 0, "{ink:?} gap");
+            }
+            // The antenna is cut out of the screen with a gap of its own, which a pixel may
+            // only just overlap; the folded radio has no antenna, so the screen is lit there.
+            let cut = pixel(&playing, past_the_tip)[3];
+            assert!(cut < 32, "{ink:?} antenna gap is {cut}/255 inked");
+            assert_eq!(pixel(&paused, past_the_tip)[3], 255, "{ink:?} no antenna");
+        }
+    }
+
+    #[test]
     fn the_monitor_and_the_stopped_radio_are_vertically_centred() {
         let drawings = [
             ("monitor", monitor_icon(Ink::Template)),
+            ("lit monitor", game_icon(None, Ink::Template)),
             ("stopped radio", radio_icon(true, Ink::Template)),
         ];
         for (name, drawing) in drawings {
@@ -513,7 +638,7 @@ mod tests {
 
     #[test]
     fn template_ink_is_black_and_a_paused_template_is_fainter() {
-        for look in LOOKS {
+        for look in looks() {
             let drawing = rgba(look, Ink::Template);
             for p in drawing.as_chunks::<4>().0.iter().filter(|p| p[3] > 0) {
                 assert_eq!(
@@ -525,6 +650,7 @@ mod tests {
         }
         let strongest = |drawing: Vec<u8>| *alphas(&drawing).iter().max().unwrap();
         assert_eq!(strongest(monitor_icon(Ink::Template)), 255);
+        assert_eq!(strongest(game_icon(None, Ink::Template)), 255);
         assert_eq!(strongest(radio_icon(false, Ink::Template)), 255);
         assert_eq!(
             strongest(radio_icon(true, Ink::Template)),
@@ -557,7 +683,38 @@ mod tests {
     }
 
     #[test]
-    fn menu_bar_greens_read_on_their_menu_bars() {
+    fn menu_bar_ink_paints_the_lit_screen_blue_in_a_frame_of_the_tint() {
+        let (lit, body, frame) = ((4.0, 5.0), on_badge((2.0, 10.5)), (1.25, 6.75));
+        for (dark, tint, blue, green) in [
+            (false, [0, 0, 0], MENU_BAR_BLUE, MENU_BAR_GREEN),
+            (
+                true,
+                [255, 255, 255],
+                MENU_BAR_BLUE_DARK,
+                MENU_BAR_GREEN_DARK,
+            ),
+        ] {
+            let ink = Ink::MenuBar { dark };
+            let alone = game_icon(None, ink);
+            assert_eq!(
+                pixel(&alone, SCREEN_CENTRE),
+                [blue[0], blue[1], blue[2], 255]
+            );
+            assert_eq!(pixel(&alone, frame), [tint[0], tint[1], tint[2], 255]);
+            for paused in STATES {
+                let badged = game_icon(Some(paused), ink);
+                assert_eq!(pixel(&badged, lit), [blue[0], blue[1], blue[2], 255]);
+                assert_eq!(pixel(&badged, frame), [tint[0], tint[1], tint[2], 255]);
+                let [r, g, b, a] = pixel(&badged, body);
+                let radio = if paused { tint } else { green };
+                assert_eq!([r, g, b], radio, "paused={paused}");
+                assert!(a > 0, "paused={paused}");
+            }
+        }
+    }
+
+    #[test]
+    fn menu_bar_greens_and_blues_read_on_their_menu_bars() {
         let light = [
             ("macOS light menu bar", [0xf6, 0xf6, 0xf6]),
             ("white", [0xff; 3]),
@@ -566,10 +723,15 @@ mod tests {
             ("macOS dark menu bar", [0x2c, 0x2c, 0x2e]),
             ("black", [0; 3]),
         ];
-        for (green, panels) in [(MENU_BAR_GREEN, light), (MENU_BAR_GREEN_DARK, dark)] {
+        for (name, ink, panels) in [
+            ("green", MENU_BAR_GREEN, light),
+            ("blue", MENU_BAR_BLUE, light),
+            ("green", MENU_BAR_GREEN_DARK, dark),
+            ("blue", MENU_BAR_BLUE_DARK, dark),
+        ] {
             for (panel, colour) in panels {
-                let ratio = contrast(green, colour);
-                assert!(ratio >= 3.0, "green is {ratio:.1}:1 on {panel}");
+                let ratio = contrast(ink, colour);
+                assert!(ratio >= 3.0, "{name} is {ratio:.1}:1 on {panel}");
             }
         }
     }
@@ -589,7 +751,11 @@ mod tests {
             ("macOS dark menu bar", [0x2c, 0x2c, 0x2e]),
             ("macOS light menu bar", [0xf6, 0xf6, 0xf6]),
         ];
-        for (state, fill) in [("playing", PLAYING), ("paused", PAUSED)] {
+        for (state, fill) in [
+            ("playing", PLAYING),
+            ("paused", PAUSED),
+            ("game screen", GAME),
+        ] {
             for (panel, colour) in panels {
                 let ratio = contrast(fill, colour);
                 assert!(ratio >= 3.0, "{state} fill is {ratio:.1}:1 on {panel}");

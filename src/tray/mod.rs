@@ -1,7 +1,7 @@
 //! lum's tray icon: the radio's controls while a station is loaded, and the
-//! monitors `lum display` has HiDPI off on. A station runner hosts it while a
-//! station is loaded; otherwise the display tray does (ADR-0022).
-//! See `README.md`.
+//! status lines: the monitors `lum display` has HiDPI off on, and `lum net game`
+//! while it is on. A station runner hosts it while a station is loaded;
+//! otherwise the status tray does (ADR-0022, ADR-0033). See `README.md`.
 //!
 //! The host's main thread owns every tray object, while a station's supervisor
 //! runs on a worker thread and only ever touches the shared [`Playback`] handle.
@@ -14,9 +14,11 @@
 //! station keeps playing. See ADR-0022.
 
 mod icon;
+pub(crate) mod status;
 
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use tray_icon::menu::{
@@ -40,10 +42,28 @@ pub(crate) struct Radio {
     pub(crate) playback: Arc<Playback>,
 }
 
-/// What the display tray's watch reports.
-pub(crate) struct Shown {
-    /// One inert line for each monitor `lum display` has HiDPI off on.
+/// What the tray says besides the radio: one inert menu line for each monitor
+/// `lum display` has HiDPI off on, and one while `lum net game` is on.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(crate) struct Status {
     pub(crate) display: Vec<String>,
+    pub(crate) game: Option<String>,
+}
+
+impl Status {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.display.is_empty() && self.game.is_none()
+    }
+
+    /// The menu lines, in order.
+    fn lines(&self) -> impl Iterator<Item = &String> {
+        self.display.iter().chain(&self.game)
+    }
+}
+
+/// What the status tray's watch reports.
+pub(crate) struct Shown {
+    pub(crate) status: Status,
     /// False hides the icon, while a station's tray shows the same lines.
     pub(crate) visible: bool,
 }
@@ -65,9 +85,9 @@ fn toggle_label(station: &str, paused: bool) -> String {
     }
 }
 
-/// A line for the station, when one is loaded, and one for the display, when it
-/// has HiDPI off.
-fn tooltip(station: Option<(&str, bool)>, display: bool) -> String {
+/// A line for the station, when one is loaded, one for the display, when it has
+/// HiDPI off, and one for game mode, when it is on.
+fn tooltip(station: Option<(&str, bool)>, display: bool, game: bool) -> String {
     let station = station.map(|(name, paused)| {
         if paused {
             format!("lum radio: {name} (paused)")
@@ -76,20 +96,23 @@ fn tooltip(station: Option<(&str, bool)>, display: bool) -> String {
         }
     });
     let display = display.then(|| "lum display: HiDPI off".to_owned());
+    let game = game.then(|| "lum net: game mode on".to_owned());
     station
         .into_iter()
         .chain(display)
+        .chain(game)
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 /// macOS tints a template image for the menu bar, light or dark, but a template has no
-/// colour, so while the radio plays lum draws the tint itself for the menu bar's appearance
-/// (`dark`, unknown until the icon exists). Everywhere else the pixels are shown as drawn.
+/// colour, so while the radio plays or the screen is lit lum draws the tint itself for the menu
+/// bar's appearance (`dark`, unknown until the icon exists). Everywhere else the pixels are shown
+/// as drawn.
 fn ink(look: Look, dark: Option<bool>) -> Ink {
     match dark {
         _ if !cfg!(target_os = "macos") => Ink::Colour,
-        Some(dark) if look.radio == Some(false) => Ink::MenuBar { dark },
+        Some(dark) if look.radio == Some(false) || look.game => Ink::MenuBar { dark },
         _ => Ink::Template,
     }
 }
@@ -151,20 +174,22 @@ fn menu_bar_dark(_: &TrayIcon) -> Option<bool> {
     None
 }
 
-/// The icon and tooltip for the station, when one is loaded, and the display lines.
+/// The icon and tooltip for the station, when one is loaded, and the status lines.
 fn face(
     radio: Option<&RadioMenu>,
-    display: &[String],
+    status: &Status,
     dark: Option<bool>,
 ) -> Result<((Icon, Ink), String)> {
     let station = radio.map(|radio| (radio.station, radio.playback.is_paused()));
-    // The display tray keeps its monitor while it hides without lines.
-    let monitor = !display.is_empty() || radio.is_none();
+    let display = !status.display.is_empty();
+    let game = status.game.is_some();
     let look = Look {
         radio: station.map(|(_, paused)| paused),
-        monitor,
+        // The status tray keeps its monitor while it hides without lines.
+        monitor: display || radio.is_none(),
+        game,
     };
-    Ok((tray_image(look, dark)?, tooltip(station, monitor)))
+    Ok((tray_image(look, dark)?, tooltip(station, display, game)))
 }
 
 /// The radio's part of the menu: the Stop/Play toggle, the station list, a
@@ -225,10 +250,10 @@ struct Ui {
     /// The tray's menu: muda carries every change over to the menu on screen.
     menu: Menu,
     radio: Option<RadioMenu>,
-    /// The display lines at the top of the menu, and the separator under them
+    /// The status lines at the top of the menu, and the separator under them
     /// when the radio's items follow.
     items: Vec<Box<dyn IsMenuItem>>,
-    display: Vec<String>,
+    status: Status,
     visible: bool,
     /// Whether the menu bar is dark, as last drawn for; see [`ink`].
     dark: Option<bool>,
@@ -240,13 +265,13 @@ impl Ui {
         let radio = radio
             .map(|radio| RadioMenu::new(radio, &menu))
             .transpose()?;
-        let (image, tip) = face(radio.as_ref(), &shown.display, None)?;
+        let (image, tip) = face(radio.as_ref(), &shown.status, None)?;
         let builder = TrayIconBuilder::new()
             // A stable id lets tray hosts remember the user's visibility choice.
             .with_id(if radio.is_some() {
                 "lum-radio"
             } else {
-                "lum-display"
+                "lum-status"
             })
             .with_menu(Box::new(menu.clone()))
             .with_tooltip(tip);
@@ -258,24 +283,23 @@ impl Ui {
             menu,
             radio,
             items: Vec::new(),
-            display: Vec::new(),
+            status: Status::default(),
             visible: true,
             dark: None,
         };
         ui.dark = menu_bar_dark(&ui.tray);
-        ui.set_lines(shown.display)?;
+        ui.set_lines(shown.status)?;
         ui.refresh()?;
         ui.set_visible(shown.visible)?;
         Ok(ui)
     }
 
     /// Brings the tray up to date with the watch.
-    #[cfg(any(windows, target_os = "macos"))]
     fn show(&mut self, shown: Shown) -> Result<()> {
         let dark = menu_bar_dark(&self.tray);
-        let lines_changed = shown.display != self.display;
+        let lines_changed = shown.status != self.status;
         if lines_changed {
-            self.set_lines(shown.display)?;
+            self.set_lines(shown.status)?;
         }
         if lines_changed || dark != self.dark {
             self.dark = dark;
@@ -284,13 +308,13 @@ impl Ui {
         self.set_visible(shown.visible)
     }
 
-    /// Puts an inert item for each display line at the top of the menu.
-    fn set_lines(&mut self, display: Vec<String>) -> Result<()> {
+    /// Puts an inert item for each status line at the top of the menu.
+    fn set_lines(&mut self, status: Status) -> Result<()> {
         for item in self.items.drain(..) {
             self.menu.remove(&*item).map_err(menu_error)?;
         }
-        let mut items: Vec<Box<dyn IsMenuItem>> = display
-            .iter()
+        let mut items: Vec<Box<dyn IsMenuItem>> = status
+            .lines()
             .map(|line| Box::new(MenuItem::new(line, false, None)) as Box<dyn IsMenuItem>)
             .collect();
         if self.radio.is_some() && !items.is_empty() {
@@ -299,7 +323,7 @@ impl Ui {
         let shown: Vec<&dyn IsMenuItem> = items.iter().map(|item| &**item).collect();
         self.menu.insert_items(&shown, 0).map_err(menu_error)?;
         self.items = items;
-        self.display = display;
+        self.status = status;
         Ok(())
     }
 
@@ -336,7 +360,7 @@ impl Ui {
 
     /// Redraws the icon and the tooltip.
     fn refresh(&self) -> Result<()> {
-        let (image, tip) = face(self.radio.as_ref(), &self.display, self.dark)?;
+        let (image, tip) = face(self.radio.as_ref(), &self.status, self.dark)?;
         self.tray
             .set_tooltip(Some(tip))
             .map_err(|error| anyhow!("{error}"))?;
@@ -385,6 +409,68 @@ fn spawn_worker(
     })
 }
 
+/// How often the watch runs.
+const WATCH_EVERY: Duration = Duration::from_secs(2);
+
+/// Hosts the tray on this thread, relaying its menu events, and returns true when a menu
+/// request ended it. It ends too, returning false, when the worker is done.
+///
+/// `watch` runs first and then every [`WATCH_EVERY`]; None ends the tray, which is how the
+/// status tray leaves. A tray that is not visible is taken down and put up again when it is:
+/// the StatusNotifierItem backend can only mark an icon passive, which a tray host may ignore.
+#[cfg(not(any(windows, target_os = "macos")))]
+fn serve(
+    radio: Option<&Radio>,
+    rx: &std::sync::mpsc::Receiver<Msg>,
+    on_request: impl Fn(Request) -> bool,
+    mut watch: impl FnMut() -> Option<Shown>,
+) -> bool {
+    use std::sync::mpsc::RecvTimeoutError;
+
+    let mut ui: Option<Ui> = None;
+    // A station's tray that could not be built is not tried again.
+    let mut gave_up = false;
+    loop {
+        if !gave_up {
+            let Some(shown) = watch() else {
+                return true;
+            };
+            if !shown.visible {
+                ui = None;
+            } else if let Some(ui) = &mut ui {
+                if let Err(error) = ui.show(shown) {
+                    tracing::debug!(error = %error, "failed to update the tray");
+                }
+            } else {
+                ui = build_ui(radio, shown);
+                if ui.is_none() {
+                    // The status tray has nothing to do without its icon, while a station
+                    // plays on without it.
+                    if radio.is_none() {
+                        return true;
+                    }
+                    gave_up = true;
+                }
+            }
+        }
+        let msg = if gave_up {
+            rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        } else {
+            rx.recv_timeout(WATCH_EVERY)
+        };
+        match msg {
+            Ok(Msg::Menu(event)) => {
+                let request = ui.as_ref().and_then(|ui| ui.on_menu_event(&event));
+                if request.is_some_and(&on_request) {
+                    return true;
+                }
+            }
+            Ok(Msg::WorkerDone) | Err(RecvTimeoutError::Disconnected) => return false,
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
 /// Runs `work` on a worker thread while this thread hosts the tray, and returns
 /// `work`'s result once it finishes. The tray disappears with the worker.
 ///
@@ -393,8 +479,8 @@ fn spawn_worker(
 /// returns at once, without waiting for `work`, which is left parked on a halted
 /// [`Playback`] until the process exits.
 ///
-/// `display` gives the display lines. It runs on this thread when the tray
-/// starts, and every 2 seconds on macOS, the one platform that has them.
+/// `status` gives the status lines. It runs on this thread when the tray starts
+/// and every 2 seconds after.
 ///
 /// Linux and BSD: the StatusNotifierItem backend runs its own D-Bus thread, so
 /// this thread only relays menu events.
@@ -402,7 +488,7 @@ fn spawn_worker(
 pub(crate) fn host(
     radio: Radio,
     on_request: impl Fn(Request) -> bool,
-    mut display: impl FnMut() -> Vec<String>,
+    mut status: impl FnMut() -> Status,
     work: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> Result<()> {
     use std::sync::mpsc;
@@ -418,26 +504,30 @@ pub(crate) fn host(
         let _ = tx.send(Msg::WorkerDone);
     });
 
-    let shown = Shown {
-        display: display(),
-        visible: true,
+    let watch = move || {
+        Some(Shown {
+            status: status(),
+            visible: true,
+        })
     };
-    let ui = build_ui(Some(&radio), shown);
-    for msg in rx {
-        match msg {
-            Msg::Menu(event) => {
-                let request = ui.as_ref().and_then(|ui| ui.on_menu_event(&event));
-                if request.is_some_and(&on_request) {
-                    return Ok(());
-                }
-            }
-            Msg::WorkerDone => break,
-        }
+    if serve(Some(&radio), &rx, on_request, watch) {
+        return Ok(());
     }
-    drop(ui);
     worker
         .join()
         .map_err(|_| anyhow!("radio runner thread panicked"))?
+}
+
+/// Hosts the status tray, with no station, until `watch` returns None. `watch`
+/// runs on this thread when the tray starts and every 2 seconds after.
+#[cfg(not(any(windows, target_os = "macos")))]
+pub(crate) fn host_status(watch: impl FnMut() -> Option<Shown>) -> Result<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    MenuEvent::set_event_handler(Some(move |event| {
+        let _ = tx.send(Msg::Menu(event));
+    }));
+    serve(None, &rx, |_| false, watch);
+    Ok(())
 }
 
 /// Runs `work` on a worker thread while this thread hosts the tray, and returns
@@ -448,8 +538,8 @@ pub(crate) fn host(
 /// returns at once, without waiting for `work`, which is left parked on a halted
 /// [`Playback`] until the process exits.
 ///
-/// `display` gives the display lines. It runs on this thread when the tray
-/// starts, and every 2 seconds on macOS, the one platform that has them.
+/// `status` gives the status lines. It runs on this thread when the tray starts,
+/// and every 2 seconds on macOS, the one platform that has them.
 ///
 /// Windows and macOS: the tray needs a native event loop on this thread, which
 /// must be the main thread on macOS.
@@ -457,7 +547,7 @@ pub(crate) fn host(
 pub(crate) fn host(
     radio: Radio,
     on_request: impl Fn(Request) -> bool,
-    mut display: impl FnMut() -> Vec<String>,
+    mut status: impl FnMut() -> Status,
     work: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> Result<()> {
     let event_loop = match native::event_loop() {
@@ -473,7 +563,7 @@ pub(crate) fn host(
     });
     let watch = move || {
         Some(Shown {
-            display: display(),
+            status: status(),
             visible: true,
         })
     };
@@ -485,11 +575,11 @@ pub(crate) fn host(
         .map_err(|_| anyhow!("radio runner thread panicked"))?
 }
 
-/// Hosts the display tray, with no station, until `watch` returns None. `watch`
-/// runs on this thread when the tray starts and every 2 seconds after.
-#[cfg(target_os = "macos")]
-pub(crate) fn host_display(watch: impl FnMut() -> Option<Shown>) -> Result<()> {
-    let event_loop = native::event_loop().context("could not start the display tray")?;
+/// Hosts the status tray, with no station, until `watch` returns None. `watch`
+/// runs on this thread when the tray starts and, on macOS, every 2 seconds after.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) fn host_status(watch: impl FnMut() -> Option<Shown>) -> Result<()> {
+    let event_loop = native::event_loop().context("could not start the status tray")?;
     native::run(event_loop, None, |_| false, watch);
     Ok(())
 }
@@ -497,7 +587,7 @@ pub(crate) fn host_display(watch: impl FnMut() -> Option<Shown>) -> Result<()> {
 /// The native event loop the tray needs on Windows and macOS.
 #[cfg(any(windows, target_os = "macos"))]
 mod native {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     use tray_icon::menu::MenuEvent;
     use winit::application::ApplicationHandler;
@@ -510,13 +600,6 @@ mod native {
     use winit::window::WindowId;
 
     use super::{Msg, Radio, Request, Shown, Ui, build_ui};
-
-    /// How often the watch runs. Only macOS has display lines, which change.
-    const WATCH_EVERY: Option<Duration> = if cfg!(target_os = "macos") {
-        Some(Duration::from_secs(2))
-    } else {
-        None
-    };
 
     pub(super) fn event_loop() -> Result<EventLoop<Msg>, EventLoopError> {
         let mut builder = EventLoop::<Msg>::with_user_event();
@@ -591,11 +674,11 @@ mod native {
                     tracing::debug!(error = %error, "failed to update the tray");
                 }
             } else if shown.visible {
-                // The display tray waits until it has something to show, so it
+                // The status tray waits until it has something to show, so it
                 // never flashes up only to hide.
                 self.ui = build_ui(self.radio.as_ref(), shown);
                 if self.ui.is_none() {
-                    // The display tray has nothing to do without its icon, while a
+                    // The status tray has nothing to do without its icon, while a
                     // station plays on without it.
                     if self.radio.is_none() {
                         self.leave(event_loop);
@@ -605,8 +688,10 @@ mod native {
                 #[cfg(target_os = "macos")]
                 super::wake_main_run_loop();
             }
-            if let Some(every) = WATCH_EVERY {
-                event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + every));
+            // Only macOS has status lines that change.
+            if cfg!(target_os = "macos") {
+                let next = Instant::now() + super::WATCH_EVERY;
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next));
             }
         }
 
@@ -645,7 +730,6 @@ fn wake_main_run_loop() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn toggle_label_names_the_action_a_click_performs() {
@@ -654,29 +738,77 @@ mod tests {
     }
 
     #[test]
-    fn tooltip_has_a_line_for_the_station_and_one_for_the_display() {
+    fn tooltip_has_a_line_each_for_the_station_the_display_and_game_mode() {
+        let playing = Some(("Drone Zone", false));
+        assert_eq!(tooltip(playing, false, false), "lum radio: Drone Zone");
         assert_eq!(
-            tooltip(Some(("Drone Zone", false)), false),
-            "lum radio: Drone Zone"
-        );
-        assert_eq!(
-            tooltip(Some(("Drone Zone", true)), false),
+            tooltip(Some(("Drone Zone", true)), false, false),
             "lum radio: Drone Zone (paused)"
         );
-        assert_eq!(tooltip(None, true), "lum display: HiDPI off");
+        assert_eq!(tooltip(None, true, false), "lum display: HiDPI off");
+        assert_eq!(tooltip(None, false, true), "lum net: game mode on");
         assert_eq!(
-            tooltip(Some(("Drone Zone", false)), true),
-            "lum radio: Drone Zone\nlum display: HiDPI off"
+            tooltip(playing, true, true),
+            "lum radio: Drone Zone\nlum display: HiDPI off\nlum net: game mode on"
         );
+    }
+
+    #[test]
+    fn status_lines_are_the_display_lines_then_game_mode() {
+        let status = Status {
+            display: vec!["DELL U2723QE".to_owned(), "LG 27GL850".to_owned()],
+            game: Some("Game mode on for eth0".to_owned()),
+        };
+        let lines: Vec<&str> = status.lines().map(String::as_str).collect();
+        assert_eq!(
+            lines,
+            ["DELL U2723QE", "LG 27GL850", "Game mode on for eth0"]
+        );
+        assert!(!status.is_empty());
+        assert!(Status::default().is_empty());
+        assert!(
+            !Status {
+                game: Some("on".to_owned()),
+                ..Status::default()
+            }
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn macos_draws_its_own_tint_for_a_playing_radio_and_a_lit_screen() {
+        let look = |radio, game| Look {
+            radio,
+            monitor: false,
+            game,
+        };
+        let menu_bar = cfg!(target_os = "macos");
+        for (look, own_tint) in [
+            (look(Some(false), false), menu_bar),
+            (look(None, true), menu_bar),
+            (look(Some(true), true), menu_bar),
+            // A paused radio alone is a template, which macOS tints itself.
+            (look(Some(true), false), false),
+        ] {
+            let ink = ink(look, Some(false));
+            assert_eq!(matches!(ink, Ink::MenuBar { .. }), own_tint, "{look:?}");
+        }
     }
 
     #[test]
     fn the_tray_accepts_the_icon_in_every_look() {
         for radio in [None, Some(false), Some(true)] {
             for monitor in [false, true] {
-                if radio.is_some() || monitor {
-                    for dark in [None, Some(false), Some(true)] {
-                        assert!(tray_image(Look { radio, monitor }, dark).is_ok());
+                for game in [false, true] {
+                    if radio.is_some() || monitor || game {
+                        for dark in [None, Some(false), Some(true)] {
+                            let look = Look {
+                                radio,
+                                monitor,
+                                game,
+                            };
+                            assert!(tray_image(look, dark).is_ok(), "{look:?} {dark:?}");
+                        }
                     }
                 }
             }

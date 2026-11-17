@@ -126,7 +126,10 @@ fn game(platform: &dyn Platform, requested: Option<&str>, command: &[String]) ->
     } else {
         Trap::install()?
     };
-    let Some(record) = begin(platform, requested)? else {
+    let began = begin(platform, requested)?;
+    // Game mode is on now, newly or already: a tray icon says so until it is off again.
+    crate::tray::status::show();
+    let Some(record) = began else {
         if command.is_empty() {
             return Ok(());
         }
@@ -363,6 +366,24 @@ fn finish_command(
     }
 }
 
+/// Whether `lum net game` has left a record: cheap to find out, unlike [`tray_line`]. Game mode
+/// may still be off, as after a reboot.
+pub(crate) fn game_recorded() -> bool {
+    crate::paths::net_game_state_file().is_ok_and(|path| path.exists())
+}
+
+/// The status tray's line for game mode, or `None` when it is off, as it is when the record is
+/// left over from before a reboot.
+pub(crate) fn tray_line() -> Option<String> {
+    let platform = platform().ok()?;
+    let record = load_record().ok()??;
+    platform.is_applied(&record).then(|| game_line(&record))
+}
+
+fn game_line(record: &GameRecord) -> String {
+    format!("Game mode on for {} since {}", record.iface, record.started)
+}
+
 fn load_record() -> Result<Option<GameRecord>> {
     let path = crate::paths::net_game_state_file()?;
     if !path.exists() {
@@ -403,6 +424,20 @@ mod tests {
         assert_eq!(describe_link(Some(100), true), "at 100 Mb/s");
         assert_eq!(describe_link(None, true), "has a link");
         assert_eq!(describe_link(None, false), "has no link");
+    }
+
+    #[test]
+    fn the_tray_line_names_the_interface_and_when_game_mode_began() {
+        let record = GameRecord {
+            iface: "eth0".to_owned(),
+            mac: "02:00:00:00:00:01".to_owned(),
+            started: "2026-11-12 20:00".to_owned(),
+            pf_token: None,
+        };
+        assert_eq!(
+            game_line(&record),
+            "Game mode on for eth0 since 2026-11-12 20:00"
+        );
     }
 
     #[test]

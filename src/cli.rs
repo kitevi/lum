@@ -33,9 +33,9 @@ pub enum Commands {
     /// Internal radio station loop runner.
     #[usage(name = "__radio_direct_runner", hide)]
     RadioDirectRunner { code: String },
-    /// Internal display tray, shown while `lum display off` is in force.
-    #[usage(name = "__display_tray", hide)]
-    DisplayTray,
+    /// Internal status tray, shown while `lum display off` or `lum net game` is in force.
+    #[usage(name = "__status_tray", hide)]
+    StatusTray,
     /// Internal Git credential helper.
     #[usage(name = "__git_credential", hide)]
     GitCredential { route_id: String, operation: String },
@@ -427,7 +427,7 @@ mod tests {
             | Commands::Vol { .. }
             | Commands::Net { .. }
             | Commands::Display { .. }
-            | Commands::DisplayTray => {
+            | Commands::StatusTray => {
                 panic!("expected radio command")
             }
         }
@@ -452,7 +452,7 @@ mod tests {
             | Commands::Vol { .. }
             | Commands::Net { .. }
             | Commands::Display { .. }
-            | Commands::DisplayTray => {
+            | Commands::StatusTray => {
                 panic!("expected radio command")
             }
         }

@@ -1,6 +1,6 @@
 # Display Subcommand
 
-`lum display` turns HiDPI on and off for monitors that aren't Retina: on for sharp text, off for games. It does the job of Crisp or Acuity without an app. `lum display srgb` gives the same monitors the sRGB color profile. macOS only; elsewhere it refuses to run. Why it works this way is in ADR-0029, ADR-0030, ADR-0032 for sRGB and, for the tray, ADR-0022.
+`lum display` turns HiDPI on and off for monitors that aren't Retina: on for sharp text, off for games. It does the job of Crisp or Acuity without an app. `lum display srgb` gives the same monitors the sRGB color profile. macOS only; elsewhere it refuses to run. Why it works this way is in ADR-0029, ADR-0030, ADR-0032 for sRGB and, for the tray, ADR-0022 and ADR-0033.
 
 ## CLI Shape
 
@@ -42,8 +42,8 @@ macOS only offers HiDPI sizes for monitors it treats as high-density. For the ot
 
 - The menu holds a disabled line for each monitor with HiDPI off, worded as `lum display` prints it.
 - While a station is loaded, its runner's tray shows the lines above the radio's items, and its icon becomes the monitor with the radio over its corner.
-- Otherwise `off` starts the display tray (`tray.rs`): `lum __display_tray`, a process of its own with a monitor icon. It holds a lock on `display-tray.lock` in lum's state folder, so there is only ever one. A station's tray shows the lines only while that lock is held, so without `lum display off` a monitor at its plain resolution shows nothing.
-- Every 10 seconds the display tray reads the modes again (`MODES_EVERY`); whether a station is loaded it checks every 2. A tray that leaves checks once more after releasing its lock and starts a new one if HiDPI is off again, so a `lum display off` racing its exit still gets an icon. It hides while a station is loaded and exits once HiDPI is back on everywhere, by `lum display on` or System Settings. While every monitor it manages is unplugged it stays, hidden, until one comes back or the session ends.
+- Otherwise `off` starts the status tray (`src/tray/status.rs`): `lum __status_tray`, a process of its own with a monitor icon. It is the tray `lum net game` starts too (ADR-0033), so with game mode on its menu has that line as well and its screen is filled in blue, and it stays until both are over. It holds a lock on `status-tray.lock` in lum's state folder, so there is only ever one. A station's tray shows the lines only while that lock is held, so without `lum display off` a monitor at its plain resolution shows nothing.
+- Every 10 seconds the status tray reads the modes again (`READ_EVERY`); whether a station is loaded it checks every 2. A tray that leaves checks once more after releasing its lock and starts a new one if HiDPI is off again, so a `lum display off` racing its exit still gets an icon. It hides while a station is loaded and exits once HiDPI is back on everywhere and game mode is off, by `lum display on` or System Settings. While every monitor it manages is unplugged it stays, hidden, until one comes back or the session ends.
 - How the tray is hosted and drawn is in `src/tray/README.md`.
 
 ## sRGB

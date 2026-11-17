@@ -283,11 +283,11 @@ lum net status
 lum net test                                          # latency idle and under load, receive errors
 ```
 
-Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. See `src/net/README.md`.
+Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. While game mode is on, a tray icon says so: a monitor with a blue screen. See `src/net/README.md`.
 
 ### Display (macOS)
 
-Sharp text on monitors macOS doesn't treat as Retina, such as 27-inch 2560x1440 ones, and back to plain resolution for games. Retina screens are left alone. No helper app keeps running for HiDPI; while it is off, a tray icon says so.
+Sharp text on monitors macOS doesn't treat as Retina, such as 27-inch 2560x1440 ones, and back to plain resolution for games. Retina screens are left alone. No helper app keeps running for HiDPI; while it is off, a tray icon of a monitor says so.
 
 ```sh
 lum display on     # HiDPI at about the monitor's own size; the first time it asks for your password and a restart
