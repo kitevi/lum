@@ -5,7 +5,7 @@ Status: Accepted
 ## Context
 
 `lum radio` grew a second playback path for YouTube-backed stations. yt-dlp resolved a
-channel or video page URL to a media URL before every ffplay attempt, and a
+channel or video page URL to a media URL before every ffplay attempt (ADR-0008), and a
 separate playlist runner existed only to advance through per-track resolutions. That path
 carried radio's only use of yt-dlp, its own retry semantics (resolution failures feeding the
 respawn backoff, ADR-0014), the base ffplay command without reconnect flags (it had to observe
