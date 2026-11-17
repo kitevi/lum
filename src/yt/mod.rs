@@ -59,9 +59,7 @@ pub fn run(command: YtCommand) -> Result<()> {
 
 fn check_ffmpeg() -> Result<()> {
     ffmpeg::resolve().map(|_| ()).map_err(|error| {
-        anyhow::anyhow!(
-            "ffmpeg is not available: {error}\n\nInstall it manually or let lum auto-provision it on Linux/Windows."
-        )
+        anyhow::anyhow!("ffmpeg is not available: {error}\n\nInstall it, then rerun the command.")
     })
 }
 
