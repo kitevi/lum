@@ -1,8 +1,11 @@
-//! Choosing display modes, the HiDPI file's sizes and the monitors' labels,
-//! apart from CoreGraphics so it is tested on every platform.
+//! Choosing display modes, the HiDPI file's sizes, the monitors' labels and
+//! which monitors get sRGB, apart from CoreGraphics and ColorSync so it is
+//! tested on every platform.
 
 // Only the macOS build calls these outside tests.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
+use std::path::Path;
 
 /// What lum reads from a display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +142,31 @@ pub(crate) fn labels(names: &[Option<&str>]) -> Vec<String> {
             Some(name) => format!("{name}: "),
         })
         .collect()
+}
+
+/// The sRGB profile macOS ships.
+pub(crate) const SRGB: &str = "/System/Library/ColorSync/Profiles/sRGB Profile.icc";
+
+/// What `lum display srgb` does with a monitor.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum SrgbStep<'a> {
+    Set,
+    AlreadySet,
+    /// Keep the profile picked for the monitor, in System Settings or by an app.
+    Keep(&'a Path),
+}
+
+/// A monitor gets sRGB unless it has it, or has a profile picked for it: any
+/// custom profile counts, the one macOS made for it included. `factory` is the
+/// profile macOS made for it.
+pub(crate) fn srgb_step<'a>(custom: Option<&'a Path>, factory: Option<&Path>) -> SrgbStep<'a> {
+    let srgb = Path::new(SRGB);
+    match custom {
+        Some(custom) if custom == srgb => SrgbStep::AlreadySet,
+        Some(custom) => SrgbStep::Keep(custom),
+        None if factory == Some(srgb) => SrgbStep::AlreadySet,
+        None => SrgbStep::Set,
+    }
 }
 
 #[cfg(test)]
@@ -358,5 +386,35 @@ mod tests {
                 "DELL P2723D (2): "
             ]
         );
+    }
+
+    const FACTORY: &str =
+        "/Library/ColorSync/Profiles/Displays/MP275Q E14-BCE23874-1F59-4CB7-992A-A4E494B86262.icc";
+
+    #[test]
+    fn srgb_goes_to_a_monitor_still_on_the_profile_macos_made() {
+        assert_eq!(srgb_step(None, Some(Path::new(FACTORY))), SrgbStep::Set);
+        assert_eq!(srgb_step(None, None), SrgbStep::Set);
+    }
+
+    #[test]
+    fn srgb_keeps_a_picked_profile_even_the_one_macos_made() {
+        let factory = Path::new(FACTORY);
+        assert_eq!(
+            srgb_step(Some(factory), Some(factory)),
+            SrgbStep::Keep(factory)
+        );
+        let p3 = Path::new("/System/Library/ColorSync/Profiles/Display P3.icc");
+        assert_eq!(srgb_step(Some(p3), Some(factory)), SrgbStep::Keep(p3));
+    }
+
+    #[test]
+    fn srgb_counts_as_set_whether_picked_or_made() {
+        let srgb = Path::new(SRGB);
+        assert_eq!(
+            srgb_step(Some(srgb), Some(Path::new(FACTORY))),
+            SrgbStep::AlreadySet
+        );
+        assert_eq!(srgb_step(None, Some(srgb)), SrgbStep::AlreadySet);
     }
 }

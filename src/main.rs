@@ -63,7 +63,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Font { command } => font::run(command),
         Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
         Commands::Net { command } => net::run(command),
-        Commands::Display { state } => display::run(state),
+        Commands::Display { command } => display::run(command),
         Commands::DisplayTray => display::run_tray(),
     }
 }

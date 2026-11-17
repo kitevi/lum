@@ -12,24 +12,26 @@ fn display(state: &TempDir) -> Command {
 }
 
 #[test]
-fn display_help_offers_on_and_off() {
+fn display_help_offers_on_off_and_srgb() {
     let state = TempDir::new().unwrap();
     display(&state)
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("Usage: lum display [STATE]"))
-        .stdout(contains("[possible values: on, off]"));
+        .stdout(contains("Usage: lum display [SUBCOMMAND]"))
+        .stdout(contains("  on "))
+        .stdout(contains("  off "))
+        .stdout(contains("  srgb "));
 }
 
 #[test]
-fn display_rejects_a_state_other_than_on_or_off() {
+fn display_rejects_an_unknown_command() {
     let state = TempDir::new().unwrap();
     display(&state)
         .arg("maybe")
         .assert()
-        .failure()
-        .stderr(contains("invalid value 'maybe'"));
+        .code(2)
+        .stderr(contains("unrecognized subcommand 'maybe'"));
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -37,6 +39,17 @@ fn display_rejects_a_state_other_than_on_or_off() {
 fn display_refuses_to_run_off_macos() {
     let state = TempDir::new().unwrap();
     display(&state)
+        .assert()
+        .failure()
+        .stderr(contains("lum display is only supported on macOS"));
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn display_srgb_refuses_to_run_off_macos() {
+    let state = TempDir::new().unwrap();
+    display(&state)
+        .arg("srgb")
         .assert()
         .failure()
         .stderr(contains("lum display is only supported on macOS"));

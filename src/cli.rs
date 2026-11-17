@@ -92,11 +92,12 @@ pub enum Commands {
         #[usage(subcommand)]
         command: NetCommand,
     },
-    /// Sharp HiDPI text on monitors that aren't Retina, or off for games. (macOS)
+    /// HiDPI on and off, and sRGB color, for monitors that aren't Retina. (macOS)
+    ///
+    /// Without a command, shows whether HiDPI is on.
     Display {
-        /// Omit to show whether HiDPI is on.
-        #[usage(value_enum)]
-        state: Option<HidpiState>,
+        #[usage(subcommand)]
+        command: Option<DisplayCommand>,
     },
 }
 
@@ -368,15 +369,18 @@ pub enum FontCommand {
     Uninstall { font: String },
 }
 
-// Only the macOS build reads the state; elsewhere `lum display` refuses to run.
+// Only the macOS build reads the command; elsewhere `lum display` refuses to run.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
-pub enum HidpiState {
+#[derive(Debug, usage_rs::Subcommands)]
+pub enum DisplayCommand {
     /// Sharp HiDPI at about the monitor's own size.
     On,
     /// The monitor's plain resolution until you restart or log out: least GPU work, for games.
     Off,
+    /// The sRGB color profile, for monitors still on the one macOS made for them. Asks first.
+    Srgb,
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -468,15 +472,26 @@ mod tests {
         assert!(matches!(
             cli.command,
             Commands::Display {
-                state: Some(HidpiState::On)
+                command: Some(DisplayCommand::On)
             }
         ));
     }
 
     #[test]
-    fn parses_display_without_a_state() {
+    fn parses_display_srgb() {
+        let cli = parse(&["display", "srgb"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Display {
+                command: Some(DisplayCommand::Srgb)
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_display_without_a_command() {
         let cli = parse(&["display"]);
-        assert!(matches!(cli.command, Commands::Display { state: None }));
+        assert!(matches!(cli.command, Commands::Display { command: None }));
     }
 
     #[test]

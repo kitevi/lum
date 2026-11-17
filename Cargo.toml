@@ -60,10 +60,15 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # tray-icon's own examples nudge the main run loop after creating the status item. `lum display`
-# also builds a CFDictionary and reads the CFArrays CoreGraphics hands back.
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+# also builds a CFDictionary and reads the CFArrays CoreGraphics hands back, and `lum display srgb`
+# reads the profile IDs and URLs ColorSync keeps for each display.
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFRunLoop", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFURL", "CFUUID"] }
 # `lum display` lists and switches display modes (see ADR-0029).
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "libc", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }
+# `lum display srgb` reads and sets monitors' color profiles (see ADR-0032).
+objc2-color-sync = { version = "0.3", default-features = false, features = ["std", "ColorSyncDevice"] }
+# `lum display srgb` asks before it changes a monitor's color profile.
+inquire = { version = "0.9", default-features = false, features = ["crossterm"] }
 # `lum display on` writes the display override file.
 plist = "1.10.4"
 # `lum display` names monitors as System Settings does (NSScreen), which needs the main-thread marker,

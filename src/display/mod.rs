@@ -1,24 +1,33 @@
-//! `lum display`: HiDPI on and off for monitors that aren't Retina, and the tray
-//! that shows it while it is off. macOS only. See `README.md`.
+//! `lum display`: HiDPI on and off, and sRGB color, for monitors that aren't
+//! Retina, and the tray that shows HiDPI while it is off. macOS only. See
+//! `README.md`.
 
 #[cfg(target_os = "macos")]
 mod macos;
 mod modes;
 #[cfg(target_os = "macos")]
+mod srgb;
+#[cfg(target_os = "macos")]
 mod tray;
 
 use anyhow::Result;
 
-use crate::cli::HidpiState;
+use crate::cli::DisplayCommand;
 
-pub fn run(state: Option<HidpiState>) -> Result<()> {
+pub fn run(command: Option<DisplayCommand>) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        macos::run(state)
+        use macos::HidpiState;
+        match command {
+            None => macos::run(None),
+            Some(DisplayCommand::On) => macos::run(Some(HidpiState::On)),
+            Some(DisplayCommand::Off) => macos::run(Some(HidpiState::Off)),
+            Some(DisplayCommand::Srgb) => srgb::run(),
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = state;
+        let _ = command;
         unsupported()
     }
 }

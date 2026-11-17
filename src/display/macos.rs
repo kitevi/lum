@@ -24,7 +24,6 @@ use plist::{Dictionary, Value};
 use super::modes::{
     self, Mode, hidpi_mode, ladder, native_size, plain_mode, retina, scale_entry, size_difference,
 };
-use crate::cli::HidpiState;
 
 /// Where macOS reads the display overrides an admin adds.
 const OVERRIDES: &str = "/Library/Displays/Contents/Resources/Overrides";
@@ -37,6 +36,12 @@ const NATIVE_FLAG: u32 = 0x0200_0000;
 const DEFAULT_FLAG: u32 = 0x0000_0004;
 const RELOAD: &str =
     "Restart the Mac, or unplug the monitor and plug it back in, then run `lum display on` again.";
+
+/// Which way `lum display on` and `off` switch.
+pub(super) enum HidpiState {
+    On,
+    Off,
+}
 
 pub(super) fn run(state: Option<HidpiState>) -> Result<()> {
     let monitors = Monitor::managed()?;
@@ -93,8 +98,8 @@ pub(super) fn off_lines() -> Option<Vec<String>> {
     Some(off)
 }
 
-struct Monitor {
-    id: CGDirectDisplayID,
+pub(super) struct Monitor {
+    pub(super) id: CGDirectDisplayID,
     modes: Vec<CgMode>,
     /// The panel's own resolution.
     native: (u32, u32),
@@ -103,7 +108,7 @@ struct Monitor {
 impl Monitor {
     /// Every monitor that isn't Retina. Retina screens, the built-in ones among
     /// them, run at HiDPI by themselves, so their text is sharp already.
-    fn managed() -> Result<Vec<Self>> {
+    pub(super) fn managed() -> Result<Vec<Self>> {
         external_ids()?.into_iter().filter_map(Self::new).collect()
     }
 
@@ -119,7 +124,7 @@ impl Monitor {
 
     /// What starts each monitor's line: its name, as System Settings shows it,
     /// once there are several.
-    fn labels(monitors: &[Self]) -> Vec<String> {
+    pub(super) fn labels(monitors: &[Self]) -> Vec<String> {
         let names = if monitors.len() > 1 {
             screen_names()
         } else {
