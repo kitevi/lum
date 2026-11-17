@@ -1,10 +1,10 @@
 # Radio Playback Uses ffplay
 
-Status: Accepted (YouTube station resolution removed by ADR-0031)
+Status: Accepted (YouTube station resolution removed by ADR-0031). ADR-0014 adds a runner that supervises ffplay, and ADR-0022 brings pause back through the tray.
 
 ## Context
 
-`lum radio` reimplements the old `ruv` workflow: list built-in stations, play a station, stop playback, and check status. Pause/resume were later removed by ADR-0010.
+`lum radio` reimplements the old `ruv` workflow: list built-in stations, play a station, stop playback, and check status. The command line's pause and resume were later removed by ADR-0010, and ADR-0022 brought pause back as the tray's Stop/Play toggle.
 
 The first Rust implementation direction used a pure Rust foreground playback stack:
 
@@ -34,7 +34,7 @@ Lum does not own:
 - audio output device integration
 - terminal-key foreground controls
 - a custom radio IPC protocol
-- a long-running internal Radio player process
+- a player process of its own: ffplay plays, and the runner of ADR-0014 only supervises it
 
 `ffplay` is resolved from `$PATH` first. If unavailable, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary and the ffmpeg provisioning path extracts `ffplay` when the downloaded archive includes it.
 
@@ -42,11 +42,11 @@ Lum does not own:
 
 This greatly reduces implementation surface area and dependency surface for radio playback. The pure Rust playback stack dependencies should stay removed unless a future ADR reverses this decision.
 
-`lum radio <code>` starts `ffplay` detached and records `radio-player.json` state containing the process id, process start time when available, station code, and station description.
+`lum radio <code>` starts a hidden runner, detached, that supervises `ffplay` (ADR-0014), and records `radio-player.json` state containing the runner's process id, its start time when available, the station code and description and, since ADR-0022, whether playback is paused.
 
-`stop` kills the remembered `ffplay` process and clears state. Pause/resume behavior is intentionally not part of the current radio interface; see ADR-0010.
+`stop` ends the remembered runner, which kills its `ffplay`, and clears state. The command line has no pause or resume (ADR-0010); the tray's Stop/Play toggle pauses (ADR-0022).
 
-`status` is based on lum's remembered state plus a process identity/aliveness check. Lum verifies the remembered PID still looks like ffplay and, when start time is known, that it is the same process instance. It is intentionally simpler than a full playback telemetry channel.
+`status` is based on lum's remembered state plus a process identity/aliveness check. Lum verifies the remembered PID still looks like the runner (like ffplay, for state written before runners existed) and, when start time is known, that it is the same process instance. It is intentionally simpler than a full playback telemetry channel.
 
 If a platform's managed ffmpeg archive does not include `ffplay`, radio playback requires a user-installed ffplay. Do not fall back to a custom Rust audio stack just to cover that case.
 

@@ -1,6 +1,6 @@
 # Radio Stations Self-Heal Stream Failures
 
-Status: Accepted (YouTube stream resolution removed by ADR-0031)
+Status: Accepted (YouTube stream resolution removed by ADR-0031). ADR-0020 supersedes its ffplay-stderr consequence.
 
 ## Context
 
@@ -20,6 +20,6 @@ Layer three recovery mechanisms, all inside the external-player adapter, per ADR
 
 - `lum radio status` reports `playing` while the runner process is alive, meaning playback is active or being retried with backoff. Audible gaps are now limited to the respawn window (roughly the backoff delay plus ffplay startup).
 - The pathological case of a server that accepts connections but never sends data loops reconnect attempts inside ffplay indefinitely. Real servers either send data or close the connection; permanent exits are handled by the runner.
-- ffplay stderr stays nulled. Stream failure details now reach the rotating `lum.log` through the runner's tracing output (initialized before command dispatch) instead of being lost.
+- ffplay's stderr was nulled here; ADR-0020 has the runner log it. Stream failure details reach the rotating `lum.log` through the runner's tracing output (initialized before command dispatch) instead of being lost.
 - The playback-recovery probes need ffplay, ffmpeg, and an audio output device, so they are gated behind `LUM_RADIO_PLAYBACK_TESTS=1` and excluded from default test runs and CI, which has no audio device.
 - State files written before runners existed remember an ffplay PID directly and keep working; new state remembers the runner PID.

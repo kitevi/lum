@@ -14,7 +14,7 @@ Use a dedicated Rayon pool per command. Its size is bounded by both `max(1, jobs
 
 Use indexed parallel collection for scan results so output remains in path order. Use a full reduction for mirror sync and collect every status outcome before deciding the exit code. Do not use short-circuiting parallel predicates that could skip repositories after an error.
 
-Rayon is listed by blessed.rs and supports Linux, macOS, and Windows. Its Rust 1.80 minimum is below lum's Rust 1.91 minimum.
+Rayon is listed by blessed.rs and supports Linux, macOS, and Windows. Its Rust 1.80 minimum is below lum's `rust-version`.
 
 ## Consequences
 

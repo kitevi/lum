@@ -18,8 +18,7 @@ Parse and generate completions with usage-rs. clap and clap_complete are
 removed as direct dependencies. The CLI remains declared as typed Rust structs
 and enums in `src/cli.rs`; dispatch stays an explicit match in `src/main.rs`
 rather than usage-rs's generated `Run` dispatch, because lum's runtime policy
-(credential helper before logging, mixed sync/async handlers, blocking tool
-work) stays local and inspectable there.
+(credential helper before logging, blocking tool work) stays local and inspectable there.
 
 Both `-V` and `--version` keep printing the full build-metadata version.
 The hidden `__completions` command is preserved so existing shell startup

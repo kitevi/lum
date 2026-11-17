@@ -14,7 +14,7 @@ lum yt rss [--id-only] [--videos-only] <URL...>  # Channel RSS feed URL(s)
 ## Dependencies
 
 - **yt-dlp** — required. If not on `$PATH`, lum auto-provisions it to `data_dir()/deps/` (see ADR 0005).
-- **ffmpeg** — required for video muxing. If not on `$PATH`, lum auto-provisions it on Linux/Windows from BtbN FFmpeg-Builds to `data_dir()/deps/`; macOS remains PATH-only.
+- **ffmpeg** — required for video muxing. If not on `$PATH`, lum auto-provisions it to `data_dir()/deps/`: from BtbN FFmpeg-Builds on Linux and Windows, from the martin-riedl snapshot builds on macOS (ADR-0009).
 
 ## Architecture
 
