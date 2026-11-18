@@ -57,7 +57,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::RadioDirectRunner { code } => radio::run_direct_runner(code),
         Commands::GitCredential { .. } => unreachable!("credential helper handled before logging"),
         Commands::Backup { command } => backup::run(command),
-        Commands::Radio(args) => radio::run(args),
+        Commands::Radio { command } => radio::run(command),
         Commands::Repos { command } => repos::run(command),
         Commands::Env { command } => env::run(command),
         Commands::GitId { command } => git_id::run(command),

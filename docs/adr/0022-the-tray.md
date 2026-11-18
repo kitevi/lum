@@ -6,7 +6,7 @@ Accepted. Reverses the "no paused state" part of ADR-0010 and builds on the runn
 
 ## Context
 
-`lum radio <code>` starts a station and returns to the shell, and `lum display off` lasts until logout. Neither shows on screen, so stopping a station, changing it or noticing that HiDPI is still off means going back to a terminal. We want one tray icon for both, on Linux, macOS and Windows, without a daemon (`CONTEXT.md` avoids "Radio daemon").
+`lum radio play <code>` starts a station and returns to the shell, and `lum display off` lasts until logout. Neither shows on screen, so stopping a station, changing it or noticing that HiDPI is still off means going back to a terminal. We want one tray icon for both, on Linux, macOS and Windows, without a daemon (`CONTEXT.md` avoids "Radio daemon").
 
 A long-lived process already exists while a station is loaded: ADR-0014's hidden `__radio_direct_runner` supervisor, the same `lum` binary, owning the whole ffplay lifecycle.
 
@@ -30,7 +30,7 @@ Options considered:
 - While HiDPI is off (macOS) or game mode is on, the menu starts with a disabled line for each, a monitor's worded as `lum display` prints it, and a separator.
 - The radio's part is `Stop/Play <station>`, a `Stations` submenu and `Random station`, then `Quit radio`.
 - **Stop and Play.** Stop kills ffplay, through `shared_child` so it can be killed while the supervisor waits on it; Play respawns it. A pause is not a stream failure: it doesn't back off or count toward giving up, backoff sleeps wake early on it, and resuming starts a fresh failure streak. The runner, and so the tray, outlives a pause; `radio-player.json` gains `paused`, written only by the runner whose PID it names, and `lum radio status` prints `paused <code> <name>`.
-- **Switching hands over to a new runner.** The runner starts the chosen station's runner, writes the state file for it, then silences itself and exits; the successor shows its own tray. Spawning `lum radio <code>` from the runner would kill the process that spawned it, so the runner starts its successor itself. Starting the successor first means a failed start leaves the current station playing. `Random station` follows the `lum radio rand` rules. The station list is a submenu of plain names in catalog order, the current one checked and disabled.
+- **Switching hands over to a new runner.** The runner starts the chosen station's runner, writes the state file for it, then silences itself and exits; the successor shows its own tray. Spawning `lum radio play <code>` from the runner would kill the process that spawned it, so the runner starts its successor itself. Starting the successor first means a failed start leaves the current station playing. `Random station` follows the `lum radio random` rules. The station list is a submenu of plain names in catalog order, the current one checked and disabled.
 - **Quit is `lum radio stop` from the tray.** The runner removes the state file only if it still names its own PID, kills ffplay and returns from `main` without joining the supervisor, which `Playback::halt` parks as a pause would.
 - Clicking the icon itself is not a portable gesture across tray hosts, so everything is a menu item.
 

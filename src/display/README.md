@@ -67,10 +67,10 @@ Picking the modes, the size difference, the size list, the file entries, which m
 `lum display status`, `off` and `on` have been run by hand on an M1 Mac with a 2560x1440 monitor that had Crisp's file loaded. Installing the file needs a password and has not been run yet: on a monitor without the file, run `lum display on`, restart, then run it again. A restart after `off` has not been tried yet either. Neither have several monitors, a Retina monitor or the tray. The tray needs a desktop session, so it is checked by hand:
 
 ```sh
-cargo run -- display off   # a monitor icon appears; its menu reads "HiDPI off: ..."
-cargo run -- radio dron    # within 10 s the monitor joins the radio's icon, its line above the radio's items
-cargo run -- radio stop    # the monitor icon comes back by itself
-cargo run -- display on    # within 10 s the icon goes
+cargo run -- display off     # a monitor icon appears; its menu reads "HiDPI off: ..."
+cargo run -- radio play dron # within 10 s the monitor joins the radio's icon, its line above the radio's items
+cargo run -- radio stop      # the monitor icon comes back by itself
+cargo run -- display on      # within 10 s the icon goes
 ```
 
 `lum display srgb` has been run by hand on the same Mac and monitor, with no custom profile: `sRGB profile set.`, then `sRGB profile already set.`; a Swift snippet put the profile macOS made back afterwards. Since it asks, no, Enter alone and no terminal have each left the monitor on the profile macOS made; yes leads to the write above. A monitor with a picked profile, several monitors and a Retina one have not been tried yet.

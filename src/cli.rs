@@ -41,7 +41,10 @@ pub enum Commands {
     #[usage(name = "__git_credential", hide)]
     GitCredential { route_id: String, operation: String },
     /// Listen to internet radio stations.
-    Radio(RadioArgs),
+    Radio {
+        #[usage(subcommand)]
+        command: RadioCommand,
+    },
     /// Backup and restore directories.
     Backup {
         #[usage(subcommand)]
@@ -122,15 +125,21 @@ impl From<CompletionShell> for usage_rs::complete::Shell {
     }
 }
 
-#[derive(Debug, usage_rs::Args, Clone)]
-#[usage(
-    after_help = "Commands:\n  lum radio                 List stations\n  lum radio <code>          Play a station (example: lum radio dron)\n  lum radio rand            Play a random station, never the current one\n  lum radio status          Show current playback state\n  lum radio stop            Stop playback and clear state"
-)]
-pub struct RadioArgs {
-    /// Command (list|status|stop|rand) or station code.
-    ///
-    /// Omit to list stations and common playback commands.
-    pub arg: Option<String>,
+#[derive(Debug, usage_rs::Subcommands)]
+pub enum RadioCommand {
+    /// List the stations.
+    List,
+    /// Play a station in the background, in place of the one playing.
+    Play {
+        /// Station code, as `lum radio list` shows it.
+        station: String,
+    },
+    /// Play a random station, never the one playing.
+    Random,
+    /// Show whether a station is playing, paused or stopped.
+    Status,
+    /// Stop playback and remove the tray icon.
+    Stop,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
@@ -478,53 +487,25 @@ mod tests {
     }
 
     #[test]
-    fn parses_radio_without_station() {
-        let cli = parse(&["radio"]);
+    fn parses_radio_play() {
+        let cli = parse(&["radio", "play", "dron"]);
         match cli.command {
-            Commands::Radio(args) => assert_eq!(args.arg, None),
-            Commands::Backup { .. }
-            | Commands::Env { .. }
-            | Commands::Completions { .. }
-            | Commands::RadioDirectRunner { .. }
-            | Commands::GitCredential { .. }
-            | Commands::Tools { .. }
-            | Commands::Apps { .. }
-            | Commands::Repos { .. }
-            | Commands::GitId { .. }
-            | Commands::Yt { .. }
-            | Commands::Font { .. }
-            | Commands::Vol { .. }
-            | Commands::Net { .. }
-            | Commands::Display { .. }
-            | Commands::StatusTray => {
-                panic!("expected radio command")
-            }
+            Commands::Radio {
+                command: RadioCommand::Play { station },
+            } => assert_eq!(station, "dron"),
+            _ => panic!("expected radio play"),
         }
     }
 
     #[test]
-    fn parses_radio_with_station() {
-        let cli = parse(&["radio", "dron"]);
-        match cli.command {
-            Commands::Radio(args) => assert_eq!(args.arg.as_deref(), Some("dron")),
-            Commands::Backup { .. }
-            | Commands::Env { .. }
-            | Commands::Completions { .. }
-            | Commands::RadioDirectRunner { .. }
-            | Commands::GitCredential { .. }
-            | Commands::Tools { .. }
-            | Commands::Apps { .. }
-            | Commands::Repos { .. }
-            | Commands::GitId { .. }
-            | Commands::Yt { .. }
-            | Commands::Font { .. }
-            | Commands::Vol { .. }
-            | Commands::Net { .. }
-            | Commands::Display { .. }
-            | Commands::StatusTray => {
-                panic!("expected radio command")
+    fn parses_radio_random() {
+        let cli = parse(&["radio", "random"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Radio {
+                command: RadioCommand::Random
             }
-        }
+        ));
     }
 
     #[test]

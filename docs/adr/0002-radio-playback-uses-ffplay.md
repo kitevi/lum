@@ -42,7 +42,7 @@ Lum does not own:
 
 This greatly reduces implementation surface area and dependency surface for radio playback. The pure Rust playback stack dependencies should stay removed unless a future ADR reverses this decision.
 
-`lum radio <code>` starts a hidden runner, detached, that supervises `ffplay` (ADR-0014), and records `radio-player.json` state containing the runner's process id, its start time when available, the station code and description and, since ADR-0022, whether playback is paused.
+`lum radio play <code>` starts a hidden runner, detached, that supervises `ffplay` (ADR-0014), and records `radio-player.json` state containing the runner's process id, its start time when available, the station code and description and, since ADR-0022, whether playback is paused.
 
 `stop` ends the remembered runner, which kills its `ffplay`, and clears state. The command line has no pause or resume (ADR-0010); the tray's Stop/Play toggle pauses (ADR-0022).
 

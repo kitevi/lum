@@ -6,7 +6,7 @@ The most useful commands for new users are:
 
 - `lum env` — manage API-key-style environment variables and add lum's managed tool directory to your shell `PATH`.
 - `lum apps` — install and update desktop apps like mGBA on Linux, macOS and Windows, and keep their settings.
-- `lum radio rand` — play a random built-in station, skipping the remembered station.
+- `lum radio random` — play a random built-in station, never the one already playing.
 
 ## Install
 
@@ -215,19 +215,19 @@ Notes:
 List stations:
 
 ```sh
-lum radio
+lum radio list
 ```
 
 Play a station by code:
 
 ```sh
-lum radio <station>
+lum radio play <station>
 ```
 
 Play a random station, never the one already playing:
 
 ```sh
-lum radio rand
+lum radio random
 ```
 
 While a station plays, a system tray icon offers a Stop/Play toggle. It needs a tray host: Windows, macOS, KDE and most Linux bars have one, and stock GNOME needs the AppIndicator extension. Without one the icon is simply absent and playback is unaffected. `lum radio status` reports `playing`, `paused` or `stopped`, and `lum radio stop` ends playback and removes the icon.

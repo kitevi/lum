@@ -76,17 +76,21 @@ fn help_prints_public_commands_and_hides_internal_ones() {
 }
 
 #[test]
-fn radio_help_advertises_the_random_selector() {
+fn radio_help_offers_its_commands() {
     Command::cargo_bin("lum")
         .unwrap()
         .args(["radio", "--help"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("lum radio rand"));
+        .stdout(predicates::str::contains("  list "))
+        .stdout(predicates::str::contains("  play "))
+        .stdout(predicates::str::contains("  random "))
+        .stdout(predicates::str::contains("  status "))
+        .stdout(predicates::str::contains("  stop "));
 }
 
 #[test]
-fn radio_list_shows_station_tags_then_shows_the_random_selector() {
+fn radio_list_shows_station_tags() {
     Command::cargo_bin("lum")
         .unwrap()
         .args(["radio", "list"])
@@ -94,9 +98,7 @@ fn radio_list_shows_station_tags_then_shows_the_random_selector() {
         .success()
         .stdout(predicates::str::contains("conc  RadCap Musique Concrète"))
         .stdout(predicates::str::contains("concrète, acousmatic, collage"))
-        .stdout(predicates::str::contains(
-            "rand  Play a random built-in station",
-        ))
+        .stdout(predicates::str::contains("Play a random").not())
         .stdout(predicates::str::contains("ytlf").not())
         .stdout(predicates::str::contains("aphx").not());
 }
@@ -105,12 +107,22 @@ fn radio_list_shows_station_tags_then_shows_the_random_selector() {
 fn radio_rejects_a_removed_youtube_station() {
     Command::cargo_bin("lum")
         .unwrap()
-        .args(["radio", "ytlf"])
+        .args(["radio", "play", "ytlf"])
         .assert()
         .failure()
         .code(1)
         .stderr(predicates::str::contains("station not found: ytlf"))
         .stderr(predicates::str::contains("conc  RadCap Musique Concrète"));
+}
+
+#[test]
+fn radio_takes_no_bare_station_code() {
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["radio", "nope"])
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("unrecognized subcommand 'nope'"));
 }
 
 #[test]

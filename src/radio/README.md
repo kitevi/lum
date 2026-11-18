@@ -4,10 +4,9 @@
 
 ## CLI Shape
 
-- `lum radio` lists built-in stations one row per station.
-- `lum radio list` explicitly lists built-in stations one row per station.
-- `lum radio <code>` starts a station in the background, replacing any current station.
-- `lum radio rand` starts a random built-in station, skipping the current one.
+- `lum radio list` lists built-in stations one row per station.
+- `lum radio play <code>` starts a station in the background, replacing any current station. An unknown code fails and prints the list.
+- `lum radio random` starts a random built-in station, skipping the current one.
 - `lum radio status` prints the remembered playback state: `playing`, `paused`, or `stopped`.
 - `lum radio stop` stops playback and removes the tray.
 - Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
@@ -17,19 +16,17 @@
 
 Each entry in `stations.rs` carries a code, a standalone name, a direct stream URL, and a list of tags. Tags (genre, mood, `live`) replace the old genre grouping and long descriptions to keep the listing compact; every station needs at least one.
 
-Names must stand alone because `playing` and `status` print only the code and name. Retiring a station needs no state migration: `status` prints the remembered name, and `rand` excludes a remembered code whether or not it is still in the catalog.
+Names must stand alone because `playing` and `status` print only the code and name. Retiring a station needs no state migration: `status` prints the remembered name, and `random` excludes a remembered code whether or not it is still in the catalog.
 
 The RadCap entries use raw IP URLs, so they are the catalog entries most likely to stop working when a host moves. Check them before assuming a playback failure is local.
 
 ## Random Station Selection
 
-`rand` is a reserved selector code, not a catalog entry:
+`random` draws from the catalog:
 
 - The pool is every station in `stations::all()`, drawn uniformly.
 - The station remembered in `radio-player.json` is excluded by code, whether or not its process is still alive. Resolution reads that state before playback is stopped, so a failed draw leaves the current station alone.
 - If exclusion would empty the pool, resolution fails rather than replaying the current station.
-- `lum radio list` prints the station table, then a short block of non-station commands that includes `rand`. Unknown-code errors print the same reference.
-- The selector arm is matched before the station catch-all, so the selector always wins if a catalog entry is ever named `rand`.
 
 ## Playback Stack
 
@@ -57,7 +54,7 @@ While a station runner is alive it shows a system tray icon (ADR-0022) whose men
 - The runner's main thread owns the tray and every menu object; the supervisor runs on a worker thread that starts first. They share only `Playback` (`playback.rs`): the pause flag and the running ffplay. Never touch tray or menu objects from the worker: macOS requires the main thread, and release builds use `panic = "abort"`, so a panic would take playback down with it.
 - Stop kills ffplay and leaves the runner idle. Play respawns it with a fresh failure streak. A pause is not a stream failure: it never backs off or counts toward giving up. Backoff sleeps wake early on a pause. Resume rejoins the live stream, so ADR-0020's 5s of leading silence applies again.
 - The tray stays visible while paused, because that is how Play works. `lum radio stop`, `Quit radio`, starting another station, or the runner giving up removes it.
-- `Stations` lists the whole catalog in `lum radio list` order; the current station is checked and inert. Picking another one, or `Random station` (same rules as `lum radio rand`), does what the CLI does without a terminal: the runner starts the new station's runner, records it in `radio-player.json`, then silences itself and exits. The successor starts first, so a failed start leaves the current station playing. The new runner brings its own tray; the menu of a live tray never changes station.
+- `Stations` lists the whole catalog in `lum radio list` order; the current station is checked and inert. Picking another one, or `Random station` (same rules as `lum radio random`), does what the CLI does without a terminal: the runner starts the new station's runner, records it in `radio-player.json`, then silences itself and exits. The successor starts first, so a failed start leaves the current station playing. The new runner brings its own tray; the menu of a live tray never changes station.
 - `Quit radio` is `lum radio stop` from the tray: the runner removes the state file if it still names its own PID, kills its ffplay and exits, so `status` reports `stopped`.
 - These requests run on the tray's thread (`handle_tray_request` in `mod.rs`). The runner then returns from `main` without joining the supervisor, which `Playback::halt` has parked for good; do not make the supervisor loops learn a second way to end.
 - The runner records `paused` in `radio-player.json` so `status` stays truthful; see Runtime Semantics.
@@ -111,7 +108,7 @@ They drive the real ffplay spawn path against a local fixture server that drops,
 Manual live-stream testing requires `ffplay`:
 
 ```sh
-cargo run -- radio dron
+cargo run -- radio play dron
 cargo run -- radio status
 cargo run -- radio stop
 ```
@@ -119,7 +116,7 @@ cargo run -- radio stop
 Pausing is covered by ordinary unit tests (`Playback`, and a supervisor that must never count a pause as a failure) plus an opt-in probe in the same `LUM_RADIO_PLAYBACK_TESTS=1` set, which drives a real ffplay through pause/resume cycles. The tray itself needs a desktop session with a tray host, so it is verified by hand:
 
 ```sh
-cargo run -- radio dron
+cargo run -- radio play dron
 cargo run -- radio status   # playing dron SomaFM Drone Zone
 # A tray icon appears. Click its "Stop ..." item: audio stops and the item reads "Play ...".
 cargo run -- radio status   # paused dron SomaFM Drone Zone
@@ -131,11 +128,11 @@ cargo run -- radio stop     # the tray icon disappears; so does it after "Quit r
 
 To try the tray without touching your real radio state or speakers, run the commands with `XDG_STATE_HOME` pointing at a scratch directory and `SDL_AUDIODRIVER=dummy`. On Linux the click can be sent over D-Bus: find the item with `busctl --user list | grep StatusNotifierItem`, then call `com.canonical.dbusmenu` `Event` with the item's id and `clicked`. The toggle is id `1`; `GetLayout` prints the ids of the stations, `Random station` and `Quit radio`.
 
-Verify random selection: play any station, then confirm `rand` never repeats it and that `status` reports the station that was drawn.
+Verify random selection: play any station, then confirm `random` never repeats it and that `status` reports the station that was drawn.
 
 ```sh
-cargo run -- radio rand
+cargo run -- radio random
 cargo run -- radio status
-cargo run -- radio rand
+cargo run -- radio random
 cargo run -- radio stop
 ```

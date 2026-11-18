@@ -6,9 +6,6 @@ pub struct Station {
     pub tags: &'static [&'static str],
 }
 
-/// Reserved selector code that plays a random built-in station. Never a catalog entry.
-pub const RANDOM_CODE: &str = "rand";
-
 const STATIONS: &[Station] = &[
     Station {
         code: "conc",
@@ -124,31 +121,6 @@ pub fn eligible_stations(exclude_code: Option<&str>) -> Vec<&'static Station> {
         .collect()
 }
 
-/// A `lum radio` command that dispatches to code rather than to a stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PseudoCommand {
-    pub code: &'static str,
-    pub description: &'static str,
-}
-
-const PSEUDO_COMMANDS: &[PseudoCommand] = &[PseudoCommand {
-    code: RANDOM_CODE,
-    description: "Play a random built-in station",
-}];
-
-pub fn format_pseudo_commands() -> String {
-    PSEUDO_COMMANDS
-        .iter()
-        .map(|command| format!("{:<4}  {}", command.code, command.description))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Catalog plus non-station commands, used by `lum radio list` and unknown-code errors.
-pub fn format_reference() -> String {
-    format!("{}\n\n{}", format_listing(), format_pseudo_commands())
-}
-
 pub fn format_listing() -> String {
     let width = all()
         .iter()
@@ -247,33 +219,9 @@ mod tests {
     }
 
     #[test]
-    fn station_reference_lists_stations_then_the_random_selector() {
-        let reference = format_reference();
-
-        assert_eq!(
-            reference,
-            format!(
-                "{}\n\nrand  Play a random built-in station",
-                format_listing()
-            )
-        );
-        assert!(
-            !format_listing()
-                .lines()
-                .any(|line| line.starts_with("rand "))
-        );
-    }
-
-    #[test]
     fn retained_stations_keep_their_tags() {
         assert!(find("dron").unwrap().tags.contains(&"ambient"));
         assert!(find("pond").unwrap().tags.contains(&"live"));
-    }
-
-    #[test]
-    fn random_selector_is_reserved_and_never_a_catalog_entry() {
-        assert!(find(RANDOM_CODE).is_none());
-        assert!(!all().iter().any(|station| station.code == RANDOM_CODE));
     }
 
     #[test]

@@ -9,57 +9,21 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::cli::RadioArgs;
+use crate::cli::RadioCommand;
 use crate::paths;
 use crate::tray;
 use playback::Playback;
 use player::{ExternalPlayer, Outcome};
 use stations::Station;
 
-const COMMAND_HELP: &str = "Commands:\n  lum radio <code>  play a station (example: lum radio dron)\n  lum radio rand    play a random station, never the current one\n  lum radio status  show playback state\n  lum radio stop    stop playback";
-
-/// How a play intent was formed. `Explicit` names a station code; `Random`
-/// defers the choice to runtime selection over the station catalog.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Selection {
-    Explicit(String),
-    Random,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RadioCommand {
-    List,
-    Status,
-    Stop,
-    Play { selection: Selection },
-}
-
-pub fn parse_command(args: &RadioArgs) -> RadioCommand {
-    match args.arg.as_deref() {
-        None | Some("list") => RadioCommand::List,
-        Some("status") => RadioCommand::Status,
-        Some("stop") => RadioCommand::Stop,
-        Some(stations::RANDOM_CODE) => RadioCommand::Play {
-            selection: Selection::Random,
-        },
-        Some(code) => RadioCommand::Play {
-            selection: Selection::Explicit(code.to_string()),
-        },
-    }
-}
-
-/// Resolves a play intent to a concrete station, before any playback is stopped.
-fn resolve_station(selection: Selection) -> Result<&'static Station> {
-    match selection {
-        Selection::Explicit(code) => stations::find(&code).with_context(|| {
-            format!(
-                "station not found: {code}\n\n{}\n\n{}",
-                stations::format_reference(),
-                COMMAND_HELP
-            )
-        }),
-        Selection::Random => random_station(current_station_code()?),
-    }
+/// The catalog station with this code, or an error that lists the catalog.
+fn find_station(code: &str) -> Result<&'static Station> {
+    stations::find(code).with_context(|| {
+        format!(
+            "station not found: {code}\n\n{}",
+            stations::format_listing()
+        )
+    })
 }
 
 /// The station remembered in playback state, so a random draw can skip it.
@@ -89,18 +53,16 @@ enum RadioProcessKind {
     DirectRunner,
 }
 
-pub fn run(args: RadioArgs) -> Result<()> {
-    match parse_command(&args) {
+pub fn run(command: RadioCommand) -> Result<()> {
+    match command {
         RadioCommand::List => {
-            println!("{}\n\n{}", stations::format_reference(), COMMAND_HELP);
+            println!("{}", stations::format_listing());
             Ok(())
         }
-        RadioCommand::Status => {
-            print_status()?;
-            Ok(())
-        }
+        RadioCommand::Play { station } => play(*find_station(&station)?),
+        RadioCommand::Random => play(*random_station(current_station_code()?)?),
+        RadioCommand::Status => print_status(),
         RadioCommand::Stop => stop(),
-        RadioCommand::Play { selection } => play(*resolve_station(selection)?),
     }
 }
 
@@ -477,72 +439,8 @@ fn remove_state() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::RadioArgs;
     use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-    #[test]
-    fn routes_list_when_no_arg() {
-        assert_eq!(parse_command(&RadioArgs { arg: None }), RadioCommand::List);
-    }
-
-    #[test]
-    fn routes_status_as_command() {
-        assert_eq!(
-            parse_command(&RadioArgs {
-                arg: Some("status".into())
-            }),
-            RadioCommand::Status
-        );
-    }
-
-    #[test]
-    fn routes_code_as_play_command() {
-        assert_eq!(
-            parse_command(&RadioArgs {
-                arg: Some("conc".into())
-            }),
-            RadioCommand::Play {
-                selection: Selection::Explicit("conc".into())
-            }
-        );
-    }
-
-    #[test]
-    fn routes_rand_as_random_selection() {
-        assert_eq!(
-            parse_command(&RadioArgs {
-                arg: Some("rand".into())
-            }),
-            RadioCommand::Play {
-                selection: Selection::Random
-            }
-        );
-    }
-
-    #[test]
-    fn pause_routes_as_play_command() {
-        assert_eq!(
-            parse_command(&RadioArgs {
-                arg: Some("pause".into())
-            }),
-            RadioCommand::Play {
-                selection: Selection::Explicit("pause".into())
-            }
-        );
-    }
-
-    #[test]
-    fn resume_routes_as_play_command() {
-        assert_eq!(
-            parse_command(&RadioArgs {
-                arg: Some("resume".into())
-            }),
-            RadioCommand::Play {
-                selection: Selection::Explicit("resume".into())
-            }
-        );
-    }
 
     #[test]
     fn legacy_state_defaults_to_ffplay_process_kind() {
@@ -664,14 +562,12 @@ mod tests {
     }
 
     #[test]
-    fn unknown_station_error_lists_stations_and_the_random_selector() {
-        let error = resolve_station(Selection::Explicit("nope".into()))
-            .expect_err("an unknown code must fail");
+    fn unknown_station_error_lists_the_stations() {
+        let error = find_station("nope").expect_err("an unknown code must fail");
         let message = error.to_string();
 
         assert!(message.starts_with("station not found: nope"));
         assert!(message.contains("conc  RadCap Musique Concrète"));
-        assert!(message.contains("rand  Play a random built-in station"));
     }
 
     #[test]
