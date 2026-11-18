@@ -268,20 +268,20 @@ lum git-id files
 
 See `src/git_id/README.md` for config shape, plaintext-credential warnings, ownership markers, generated files, and routing behavior.
 
-### Network game mode
+### Network shaping
 
-Linux and macOS only. Game mode forces the wired link to 100 Mb/s and shapes downloads just under that, for game streaming over a line whose router drops bursts at gigabit:
+Linux and macOS only. `lum net on` forces the wired link to 100 Mb/s and shapes downloads just under that, for game streaming and anything else that suffers on a line whose router drops bursts at gigabit:
 
 ```sh
-lum net game -- flatpak run com.nvidia.geforcenow     # Linux: any command; switch back when it exits
-lum net game -- open -W -a "GeForce NOW"              # macOS
-lum net game                                          # or switch on and off by hand
-lum net normal
+lum net on -- flatpak run com.nvidia.geforcenow       # Linux: any command; switch back when it exits
+lum net on -- open -W -a "GeForce NOW"                # macOS
+lum net on                                            # or switch on and off by hand
+lum net off
 lum net status
 lum net test                                          # latency idle and under load, receive errors
 ```
 
-Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. While game mode is on, a tray icon says so: a monitor with a blue screen. See `src/net/README.md`.
+Switching asks for your sudo password, so run it from a terminal. The network changes do not persist, so a reboot also switches them back. While shaping is on, a tray icon says so: a monitor with a blue screen. See `src/net/README.md`.
 
 ### Display (macOS)
 

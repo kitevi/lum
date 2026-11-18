@@ -1,4 +1,4 @@
-# Net Game Mode Is Switched On Demand
+# Net Shaping Is Switched On Demand
 
 ## Status
 
@@ -17,21 +17,22 @@ The same cable is used by a Linux PC and a Mac.
 
 ## Decision
 
-`lum net game` switches to game mode on demand, `lum net normal` switches back, and `lum net game <command>` does both around a command such as the GeForce NOW client.
+`lum net on` switches shaping on when it is wanted, `lum net off` switches it off, and `lum net on <command>` does both around a command such as the GeForce NOW client.
 
+- **Named for what it does.** Game streaming is why this exists, not what it does, so the commands are `on` and `off`, as in `lum display`, and the state is called shaping: the link forced to 100 Mb/s and downloads shaped just under it. The first names, `lum net game` and `lum net normal`, named the use instead.
 - **100 Mb/s with autonegotiation still on.** Linux advertises only 100baseT/Full with ethtool. macOS sets the media with `ifconfig`. Forcing the speed with autonegotiation off would leave the router at half duplex.
 - **Downloads are shaped to 90 Mbit/s on the computer**, so the queue builds where a shaper keeps it short. Linux redirects ingress to an IFB device running CAKE. macOS has no CAKE: a dummynet pipe with a 50-packet queue does the same main job, without per-flow fairness.
 - **The network changes are runtime state only.** Nothing touches persistent network configuration (`networksetup -setMedia`, NetworkManager profiles, `/etc/pf.conf`), so a reboot always restores the network. On macOS the pipe rule goes into the `com.apple/lum` anchor that the stock `pf.conf` already evaluates, and pf is enabled through a `pfctl -E` reference released with `-X`. The main ruleset, which VPN clients hook into, is never reloaded.
 - **Root through sudo, per command.** lum stays unprivileged and runs only the switching commands through `sudo`, with credentials refreshed while a wrapped command runs.
-- **A record names what changed.** `net-game.json` holds the interface name and MAC before anything changes, so `normal` undoes it after a rename or replug, from another terminal, or after a crash. Whether game mode is still on is read from the system, so a record left behind by a reboot reads as off.
+- **A record names what changed.** `net-shaping.json` holds the interface name and MAC before anything changes, so `off` undoes it after a rename or replug, from another terminal, or after a crash. Whether shaping is still on is read from the system, so a record left behind by a reboot reads as off.
 - **`lum net test` measures instead of guessing.** It times TCP handshakes idle and under a three-server download and reads the interface's receive errors. The handshakes need no root on either system, unlike sub-second `ping` on macOS.
-- **A tray icon shows it** while it is on: `lum net game` starts the status tray (ADR-0033), which leaves once game mode is off.
+- **A tray icon shows it** while it is on: `lum net on` starts the status tray (ADR-0033), which leaves once shaping is off.
 
 ## Consequences
 
-- Game mode is opt-in per session. Downloads run at full speed otherwise.
+- Shaping is opt-in per session. Downloads run at full speed otherwise.
 - `signal-hook` becomes a direct dependency on Unix so Ctrl+C, SIGTERM and SIGHUP cannot kill lum before it switches back. It was already in the tree through `shared_child`, so nothing new is downloaded.
 - sysinfo's `network` feature supplies interface counters on both systems.
-- Shaping on macOS depends on the stock `dummynet-anchor "com.apple/*"` line. Without it, shaping silently does nothing, and `lum net test` is how to notice.
-- If the terminal closes while a wrapped command runs, the network usually stays in game mode until `lum net normal`: sudo keeps its cached credentials per terminal by default, so switching back would have to ask for the password and has no terminal to ask on.
+- Download shaping on macOS depends on the stock `dummynet-anchor "com.apple/*"` line. Without it, it silently does nothing, and `lum net test` is how to notice.
+- If the terminal closes while a wrapped command runs, shaping usually stays on until `lum net off`: sudo keeps its cached credentials per terminal by default, so switching back would have to ask for the password and has no terminal to ask on.
 - The macOS path has not been run on real hardware.

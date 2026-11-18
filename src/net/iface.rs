@@ -5,7 +5,7 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail, ensure};
 
-/// A network interface as game mode sees it.
+/// A network interface as shaping sees it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Iface {
     pub name: String,
@@ -19,7 +19,7 @@ pub(super) struct Iface {
     pub forced: bool,
 }
 
-/// Picks the interface game mode works on: the one asked for, else the only
+/// Picks the interface shaping works on: the one asked for, else the only
 /// wired interface with a link, else the one of those carrying the default route.
 pub(super) fn pick(
     all: Vec<Iface>,
@@ -57,7 +57,7 @@ pub(super) fn pick(
     }
     linked
         .pop()
-        .context("no wired Ethernet interface has a link; game mode is for wired connections only")
+        .context("no wired Ethernet interface has a link; shaping is for wired connections only")
 }
 
 /// Finds a recorded interface again by its MAC address, whatever it is called
@@ -186,7 +186,7 @@ fn media_speed(media: &str) -> Option<u32> {
 }
 
 /// macOS: whether `ifconfig -m <iface>` lists 100 Mb/s full duplex.
-pub(super) fn supports_game_media(text: &str) -> bool {
+pub(super) fn supports_forced_media(text: &str) -> bool {
     text.lines().any(|line| {
         line.trim()
             .starts_with("media 100baseTX mediaopt full-duplex")
@@ -466,8 +466,8 @@ utun0: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1380
             \t\tmedia autoselect\n\
             \t\tmedia 100baseTX mediaopt full-duplex,flow-control\n\
             \t\tmedia 1000baseT mediaopt full-duplex\n";
-        assert!(supports_game_media(usb));
-        assert!(!supports_game_media(
+        assert!(supports_forced_media(usb));
+        assert!(!supports_forced_media(
             "\tsupported media:\n\t\tmedia autoselect\n"
         ));
     }

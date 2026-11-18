@@ -36,13 +36,13 @@ pub(super) fn run(platform: &dyn Platform, requested: Option<&str>, seconds: u64
         "--seconds must be between 5 and 120"
     );
     let iface = pick(platform, requested)?;
-    let game = load_record()?.is_some_and(|record| platform.is_applied(&record));
+    let shaping = load_record()?.is_some_and(|record| platform.is_applied(&record));
     println!(
-        "{} ({}) {}, game mode {}",
+        "{} ({}) {}, shaping {}",
         iface.name,
         iface.mac,
         describe_link(iface.speed, iface.link),
-        if game { "on" } else { "off" }
+        if shaping { "on" } else { "off" }
     );
 
     println!("Measuring idle latency for {}s...", IDLE.as_secs());
@@ -95,8 +95,8 @@ pub(super) fn run(platform: &dyn Platform, requested: Option<&str>, seconds: u64
     if let (Some(idle), Some(loaded)) = (idle.average_ms(), loaded.average_ms()) {
         let added = loaded - idle;
         let level = bufferbloat(added);
-        let hint = if level != "low" && !game {
-            " 'lum net game' shapes downloads to keep it low."
+        let hint = if level != "low" && !shaping {
+            " 'lum net on' shapes downloads to keep it low."
         } else {
             ""
         };

@@ -1,4 +1,4 @@
-//! The status tray: while `lum display off` is in force (macOS) or `lum net game` is on,
+//! The status tray: while `lum display off` is in force (macOS) or `lum net on` is in force,
 //! a tray icon with a line for each (ADR-0022, ADR-0033). The command that switches starts
 //! it in a process of its own, and it leaves once neither is in force. While a station is
 //! loaded, the station's tray shows the lines instead and this one hides.
@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use super::{Shown, Status};
 use crate::paths;
 
-/// How often the trays read what the lines say: the modes of every monitor, and whether game
+/// How often the trays read what the lines say: the modes of every monitor, and whether shaping
 /// mode is still on, which on macOS asks `ifconfig`. Their watch runs every 2 seconds, so a
 /// station starting or stopping shows quickly, but reading that often is wasted work for
 /// state that changes a few times a day.
@@ -46,27 +46,27 @@ impl<T: Clone> Cached<T> {
 #[derive(Default)]
 struct Sources {
     display: Cached<Option<Vec<String>>>,
-    game: Cached<Option<String>>,
+    shaping: Cached<Option<String>>,
 }
 
 impl Sources {
-    /// The display lines, with None when no monitor can be read, and the game mode line, with
-    /// None when game mode is off.
+    /// The display lines, with None when no monitor can be read, and the shaping line, with
+    /// None when shaping is off.
     fn read(&mut self) -> (Option<Vec<String>>, Option<String>) {
         let display = self.display.get(crate::display::off_lines);
         // Looking for the record is cheap; what the system says about it is not, on macOS.
-        let game = if crate::net::game_recorded() {
-            self.game.get(crate::net::tray_line)
+        let shaping = if crate::net::shaping_recorded() {
+            self.shaping.get(crate::net::tray_line)
         } else {
-            self.game.forget();
+            self.shaping.forget();
             None
         };
-        (display, game)
+        (display, shaping)
     }
 
     fn forget(&mut self) {
         self.display.forget();
-        self.game.forget();
+        self.shaping.forget();
     }
 }
 
@@ -102,8 +102,8 @@ pub(crate) fn show() {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // A process group of its own, so that Ctrl+C in the terminal that ran `lum net game`
-        // does not take the icon down while game mode is still on.
+        // A process group of its own, so that Ctrl+C in the terminal that ran `lum net on`
+        // does not take the icon down while shaping is still on.
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut tray, 0);
         tray.spawn()
@@ -123,15 +123,15 @@ pub(crate) fn watch() -> impl FnMut() -> Status {
             sources.forget();
             return Status::default();
         }
-        let (display, game) = sources.read();
+        let (display, shaping) = sources.read();
         Status {
             display: display.unwrap_or_default(),
-            game,
+            shaping,
         }
     }
 }
 
-/// Runs the status tray until HiDPI is back on everywhere and game mode is off.
+/// Runs the status tray until HiDPI is back on everywhere and shaping is off.
 pub(crate) fn run() -> Result<()> {
     let lock = lock_file()?;
     match lock.try_lock() {
@@ -145,14 +145,14 @@ pub(crate) fn run() -> Result<()> {
     let mut sources = Sources::default();
     let mut idle = false;
     let hosted = super::host_status(|| {
-        let (display, game) = sources.read();
-        if game.is_none() && display.as_ref().is_some_and(Vec::is_empty) {
+        let (display, shaping) = sources.read();
+        if shaping.is_none() && display.as_ref().is_some_and(Vec::is_empty) {
             idle = true;
             return None;
         }
         let status = Status {
             display: display.unwrap_or_default(),
-            game,
+            shaping,
         };
         Some(Shown {
             visible: !status.is_empty() && !crate::radio::station_loaded(),
@@ -160,12 +160,12 @@ pub(crate) fn run() -> Result<()> {
         })
     });
     drop(lock);
-    // A `lum display off` or `lum net game` that ran while this tray was leaving saw it still
+    // A `lum display off` or `lum net on` that ran while this tray was leaving saw it still
     // up and started none, but it had switched first, so it reads as in force here.
     if idle {
         sources.forget();
-        let (display, game) = sources.read();
-        if game.is_some() || display.is_some_and(|lines| !lines.is_empty()) {
+        let (display, shaping) = sources.read();
+        if shaping.is_some() || display.is_some_and(|lines| !lines.is_empty()) {
             show();
         }
     }

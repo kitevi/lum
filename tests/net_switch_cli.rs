@@ -1,4 +1,4 @@
-//! `lum net game` and `lum net normal` end to end, against a fake `sudo` and
+//! `lum net on` and `lum net off` end to end, against a fake `sudo` and
 //! `/sys/class/net`: every command lum runs is logged instead of executed, so
 //! nothing on the real machine changes.
 
@@ -18,7 +18,7 @@ use predicates::str::contains;
 use shared_child::{SharedChild, unix::SharedChildExt};
 use tempfile::TempDir;
 
-/// What a `lum net game` on eth0 leaves behind until it is switched off.
+/// What a `lum net on` on eth0 leaves behind until it is switched off.
 const RECORD: &str = r#"{"iface":"eth0","mac":"02:00:00:00:00:01","started":"2026-11-12 20:00"}"#;
 
 struct Fake {
@@ -126,10 +126,10 @@ esac"#,
     }
 
     fn record(&self) -> PathBuf {
-        self.path("state/lum/net-game.json")
+        self.path("state/lum/net-shaping.json")
     }
 
-    /// Leaves `record` behind, as a `lum net game` that never switched back.
+    /// Leaves `record` behind, as a `lum net on` that never switched back.
     fn leave_record(&self, record: &str) {
         fs::create_dir_all(self.path("state/lum")).unwrap();
         fs::write(self.record(), record).unwrap();
@@ -185,10 +185,10 @@ fn the_status_tray_leaves_at_once_when_nothing_is_on() {
 }
 
 #[test]
-fn game_keeps_its_record_when_sudo_refuses_after_the_terminal_is_gone() {
+fn on_keeps_its_record_when_sudo_refuses_after_the_terminal_is_gone() {
     let fake = Fake::new();
     fake.script("game", "echo game >> \"$LUM_FAKE_LOG\"\nexec sleep 30");
-    let running = fake.start(&["net", "game", "game"], "game");
+    let running = fake.start(&["net", "on", "game"], "game");
     fs::write(fake.path("log.no-terminal"), "").unwrap();
     let status = running.lose_the_terminal();
     // An error, because the network could not be switched back, not a panic.
@@ -196,17 +196,17 @@ fn game_keeps_its_record_when_sudo_refuses_after_the_terminal_is_gone() {
 
     let expected = [&SWITCH_ON[..], &["game", "sudo -v"]].concat();
     assert_eq!(fake.log(), expected);
-    // The record still describes the network, for `lum net normal`.
+    // The record still describes the network, for `lum net off`.
     let record = fs::read_to_string(fake.record()).unwrap();
     assert!(record.contains("eth0"), "{record}");
 }
 
 #[test]
-fn game_switches_back_after_its_terminal_is_gone() {
+fn on_switches_back_after_its_terminal_is_gone() {
     let fake = Fake::new();
     fake.script("game", "echo game >> \"$LUM_FAKE_LOG\"\nexec sleep 30");
     let status = fake
-        .start(&["net", "game", "game"], "game")
+        .start(&["net", "on", "game"], "game")
         .lose_the_terminal();
     assert!(status.success(), "{status}");
 
@@ -216,9 +216,9 @@ fn game_switches_back_after_its_terminal_is_gone() {
 }
 
 #[test]
-fn game_checks_the_command_before_switching() {
+fn on_checks_the_command_before_switching() {
     let fake = Fake::new();
-    fake.lum(&["net", "game", "no-such-game"])
+    fake.lum(&["net", "on", "no-such-game"])
         .assert()
         .failure()
         .stderr(contains("no-such-game not found"));
@@ -227,11 +227,11 @@ fn game_checks_the_command_before_switching() {
 }
 
 #[test]
-fn game_switches_back_when_the_link_misses_game_speed() {
+fn on_switches_back_when_the_link_misses_the_forced_speed() {
     let fake = Fake::new();
     // This sudo leaves the link at 1000 Mb/s whatever ethtool is told.
     fake.script("sudo", r#"echo "sudo $*" >> "$LUM_FAKE_LOG""#);
-    fake.lum(&["net", "game"])
+    fake.lum(&["net", "on"])
         .env("LUM_NET_LINK_TIMEOUT_MS", "1")
         .assert()
         .failure()
@@ -244,56 +244,56 @@ fn game_switches_back_when_the_link_misses_game_speed() {
 }
 
 #[test]
-fn game_undoes_a_half_finished_switch_before_switching_on() {
+fn on_undoes_a_half_finished_switch_before_switching_on() {
     let fake = Fake::new();
     // lum was killed after forcing the speed and before shaping: without
     // lumifb0 the record looks stale, but the link is still forced.
     fake.set_speed(100);
     fake.leave_record(RECORD);
 
-    fake.lum(&["net", "game"])
+    fake.lum(&["net", "on"])
         .assert()
         .success()
-        .stdout(contains("Game mode on: eth0 at 100 Mb/s"));
+        .stdout(contains("Shaping on: eth0 at 100 Mb/s"));
 
     let expected = [&SWITCH_OFF[..], &SWITCH_ON[..]].concat();
     assert_eq!(fake.log(), expected);
 }
 
 #[test]
-fn game_refuses_another_interface_while_it_is_on() {
+fn on_refuses_another_interface_while_it_is_on() {
     let fake = Fake::new();
     fs::create_dir_all(fake.path("sys/lumifb0")).unwrap();
     fake.leave_record(RECORD);
 
-    fake.lum(&["net", "game", "--iface", "eth1"])
+    fake.lum(&["net", "on", "--iface", "eth1"])
         .assert()
         .failure()
-        .stderr(contains("game mode is already on for eth0"));
-    fake.lum(&["net", "game", "--iface", "eth0"])
+        .stderr(contains("shaping is already on for eth0"));
+    fake.lum(&["net", "on", "--iface", "eth0"])
         .assert()
         .success()
-        .stdout(contains("Game mode is already on for eth0."));
+        .stdout(contains("Shaping is already on for eth0."));
     assert!(fake.log().is_empty());
 }
 
 #[test]
-fn normal_switches_back_on_what_a_killed_session_left_off() {
+fn off_switches_back_on_what_a_killed_session_left_off() {
     let fake = Fake::new();
     fake.set_speed(100);
     fake.leave_record(RECORD);
 
-    fake.lum(&["net", "normal"])
+    fake.lum(&["net", "off"])
         .assert()
         .success()
-        .stdout(contains("Game mode off: eth0 at 1000 Mb/s"));
+        .stdout(contains("Shaping off: eth0 at 1000 Mb/s"));
 
     assert_eq!(fake.log(), SWITCH_OFF);
     assert!(!fake.record().exists());
 }
 
 #[test]
-fn normal_ignores_a_bridge_with_the_same_address() {
+fn off_ignores_a_bridge_with_the_same_address() {
     let fake = Fake::new();
     // A bridge over eth0 takes its address, and sorts before it.
     let br0 = fake.path("sys/br0");
@@ -308,10 +308,10 @@ fn normal_ignores_a_bridge_with_the_same_address() {
     fake.set_speed(100);
     fake.leave_record(RECORD);
 
-    fake.lum(&["net", "normal"])
+    fake.lum(&["net", "off"])
         .assert()
         .success()
-        .stdout(contains("Game mode off: eth0 at 1000 Mb/s"));
+        .stdout(contains("Shaping off: eth0 at 1000 Mb/s"));
 
     assert_eq!(fake.log(), SWITCH_OFF);
     assert!(!fake.record().exists());

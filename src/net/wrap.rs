@@ -1,5 +1,5 @@
-//! Running a command that lum has to clean up after when it exits: the game
-//! that `lum net game` wraps.
+//! Running a command that lum has to clean up after when it exits: the command
+//! that `lum net on` wraps.
 
 use std::{
     process::{Command, ExitStatus},

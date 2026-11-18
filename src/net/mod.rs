@@ -1,12 +1,12 @@
-//! `lum net`: switch the wired connection between normal and game mode.
+//! `lum net`: switch shaping of the wired connection on and off.
 //!
-//! Game mode forces the link to 100 Mb/s and shapes downloads just under that,
+//! Shaping forces the link to 100 Mb/s and shapes downloads just under that,
 //! so bursts queue at the computer instead of being dropped upstream, and
 //! downloads cannot fill the router's queue. See `README.md` and ADR-0024.
 
 /// `println!` that drops the line when it cannot be written. `println!`
 /// panics instead, and with the terminal gone that would end lum before it
-/// switches back. Everything that switches game mode prints through this.
+/// switches back. Everything that switches shaping prints through this.
 macro_rules! say {
     ($($arg:tt)*) => {{
         use std::io::Write as _;
@@ -44,8 +44,8 @@ use crate::cli::NetCommand;
 use iface::Iface;
 use wrap::Trap;
 
-/// The link speed game mode forces, in Mb/s.
-const GAME_SPEED: u32 = 100;
+/// The link speed shaping forces, in Mb/s.
+const FORCED_SPEED: u32 = 100;
 /// Downloads are shaped a little under the link speed, so the queue builds
 /// here, where the shaper keeps it short, and not in the router.
 const SHAPED_MBIT: u32 = 90;
@@ -64,22 +64,22 @@ fn link_timeout() -> Duration {
 pub fn run(command: NetCommand) -> Result<()> {
     let platform = platform()?;
     match command {
-        NetCommand::Game { iface, command } => game(platform, iface.as_deref(), &command),
-        NetCommand::Normal => normal(platform),
+        NetCommand::On { iface, command } => on(platform, iface.as_deref(), &command),
+        NetCommand::Off => off(platform),
         NetCommand::Status => status(platform),
         NetCommand::Test { iface, seconds } => probe::run(platform, iface.as_deref(), seconds),
     }
 }
 
-/// What game mode needs from the operating system.
+/// What shaping needs from the operating system.
 trait Platform {
     /// Every network interface, wired or not, with its current link.
     fn interfaces(&self) -> Result<Vec<Iface>>;
     /// The interface that carries the default route, if any.
     fn default_route(&self) -> Option<String>;
-    /// Fails with an install hint when a tool game mode needs is missing.
+    /// Fails with an install hint when a tool shaping needs is missing.
     fn check_tools(&self) -> Result<()>;
-    fn force_game_speed(&self, iface: &str) -> Result<()>;
+    fn force_speed(&self, iface: &str) -> Result<()>;
     fn restore_auto_speed(&self, iface: &str) -> Result<()>;
     /// Starts shaping downloads on `iface`. Returns a token `unshape` needs.
     fn shape(&self, iface: &str) -> Result<Option<String>>;
@@ -87,7 +87,7 @@ trait Platform {
     fn unshape(&self, iface: &str, token: Option<&str>);
     /// Whether the system still shows the changes `record` describes. False
     /// after a reboot, which undoes them all.
-    fn is_applied(&self, record: &GameRecord) -> bool;
+    fn is_applied(&self, record: &ShapingRecord) -> bool;
 }
 
 fn platform() -> Result<&'static dyn Platform> {
@@ -100,10 +100,10 @@ fn platform() -> Result<&'static dyn Platform> {
     }
 }
 
-/// What `lum net game` changed, kept in `net-game.json` so `lum net normal`
+/// What `lum net on` changed, kept in `net-shaping.json` so `lum net off`
 /// can undo it even from another terminal or after lum was killed.
 #[derive(Debug, Serialize, Deserialize)]
-struct GameRecord {
+struct ShapingRecord {
     iface: String,
     /// Finds the interface again if it was renamed or replugged.
     mac: String,
@@ -113,12 +113,12 @@ struct GameRecord {
     pf_token: Option<String>,
 }
 
-fn game(platform: &dyn Platform, requested: Option<&str>, command: &[String]) -> Result<()> {
+fn on(platform: &dyn Platform, requested: Option<&str>, command: &[String]) -> Result<()> {
     if let Some(program) = command.first() {
         // Before anything changes: a mistyped name would otherwise cost a
         // switch on and straight back off.
         which::which(program)
-            .with_context(|| format!("{program} not found; game mode was left as it was"))?;
+            .with_context(|| format!("{program} not found; shaping was left as it was"))?;
     }
 
     let trap = if command.is_empty() {
@@ -127,7 +127,7 @@ fn game(platform: &dyn Platform, requested: Option<&str>, command: &[String]) ->
         Trap::install()?
     };
     let began = begin(platform, requested)?;
-    // Game mode is on now, newly or already: a tray icon says so until it is off again.
+    // Shaping is on now, newly or already: a tray icon says so until it is off again.
     crate::tray::status::show();
     let Some(record) = began else {
         if command.is_empty() {
@@ -137,7 +137,7 @@ fn game(platform: &dyn Platform, requested: Option<&str>, command: &[String]) ->
         return finish_command(command, wrap::run(command, &trap), trap.fired());
     };
     if command.is_empty() {
-        say!("Run 'lum net normal' to switch back.");
+        say!("Run 'lum net off' to switch back.");
         return Ok(());
     }
 
@@ -145,15 +145,15 @@ fn game(platform: &dyn Platform, requested: Option<&str>, command: &[String]) ->
         let _sudo = root::keep_alive();
         wrap::run(command, &trap)
     };
-    say!("Switching game mode off.");
+    say!("Switching shaping off.");
     switch_off(platform, &record)
-        .context("game mode is still on; run 'lum net normal' to switch back")?;
+        .context("shaping is still on; run 'lum net off' to switch back")?;
     finish_command(command, outcome, trap.fired())
 }
 
-fn normal(platform: &dyn Platform) -> Result<()> {
+fn off(platform: &dyn Platform) -> Result<()> {
     let Some(record) = load_record()? else {
-        say!("Game mode is not on.");
+        say!("Shaping is not on.");
         return Ok(());
     };
     switch_off(platform, &record)
@@ -164,19 +164,19 @@ fn status(platform: &dyn Platform) -> Result<()> {
         Some(record) => {
             if platform.is_applied(&record) {
                 say!(
-                    "Game mode: on for {} since {} ({GAME_SPEED} Mb/s, downloads shaped to {SHAPED_MBIT} Mbit/s)",
+                    "Shaping: on for {} since {} ({FORCED_SPEED} Mb/s, downloads shaped to {SHAPED_MBIT} Mbit/s)",
                     record.iface,
                     record.started
                 );
             } else {
                 say!(
-                    "Game mode: off (a record for {} from {} is left over; 'lum net normal' clears it)",
+                    "Shaping: off (a record for {} from {} is left over; 'lum net off' clears it)",
                     record.iface,
                     record.started
                 );
             }
         }
-        None => say!("Game mode: off"),
+        None => say!("Shaping: off"),
     }
 
     let wired: Vec<Iface> = platform
@@ -217,41 +217,41 @@ fn status(platform: &dyn Platform) -> Result<()> {
     Ok(())
 }
 
-/// Switches game mode on and returns its record, or `None` if it was on
+/// Switches shaping on and returns its record, or `None` if it was on
 /// already, in which case whoever switched it on also switches it off.
-fn begin(platform: &dyn Platform, requested: Option<&str>) -> Result<Option<GameRecord>> {
+fn begin(platform: &dyn Platform, requested: Option<&str>) -> Result<Option<ShapingRecord>> {
     if let Some(record) = load_record()? {
         if platform.is_applied(&record) {
             if let Some(requested) = requested {
                 ensure!(
                     requested == record.iface,
-                    "game mode is already on for {}; run 'lum net normal' before using {requested}",
+                    "shaping is already on for {}; run 'lum net off' before using {requested}",
                     record.iface
                 );
             }
-            say!("Game mode is already on for {}.", record.iface);
+            say!("Shaping is already on for {}.", record.iface);
             return Ok(None);
         }
         // A reboot undid the network changes, but a lum killed part-way
         // through switching on can leave the link forced with no shaper to
-        // show for it. So the record is undone in full, as `normal` does.
-        say!("Clearing what an earlier game mode left behind.");
+        // show for it. So the record is undone in full, as `off` does.
+        say!("Clearing what earlier shaping left behind.");
         switch_off(platform, &record)?;
     }
 
     platform.check_tools()?;
     let iface = pick(platform, requested)?;
     root::authenticate()?;
-    let mut record = GameRecord {
+    let mut record = ShapingRecord {
         iface: iface.name.clone(),
         mac: iface.mac.clone(),
         started: jiff::Zoned::now().strftime("%Y-%m-%d %H:%M").to_string(),
         pf_token: None,
     };
-    // Saved before anything changes, so `normal` can clean up a partial switch.
+    // Saved before anything changes, so `off` can clean up a partial switch.
     save_record(&record)?;
     if let Err(error) = switch_on(platform, &mut record) {
-        say_err!("Switching game mode on failed; switching back.");
+        say_err!("Switching shaping on failed; switching back.");
         if let Err(revert) = switch_off(platform, &record) {
             say_err!("{revert:#}");
         }
@@ -260,36 +260,36 @@ fn begin(platform: &dyn Platform, requested: Option<&str>) -> Result<Option<Game
     Ok(Some(record))
 }
 
-fn switch_on(platform: &dyn Platform, record: &mut GameRecord) -> Result<()> {
-    platform.force_game_speed(&record.iface)?;
-    // Without the link at game speed there is no game mode: the error makes
+fn switch_on(platform: &dyn Platform, record: &mut ShapingRecord) -> Result<()> {
+    platform.force_speed(&record.iface)?;
+    // Without the link at the forced speed there is no download shaping: the error makes
     // `begin` switch back, so a shaper never sits on a faster link.
-    match wait_for_link(platform, record, |speed| speed == GAME_SPEED) {
-        Some(GAME_SPEED) => {}
+    match wait_for_link(platform, record, |speed| speed == FORCED_SPEED) {
+        Some(FORCED_SPEED) => {}
         Some(speed) => bail!(
-            "{} did not reach {GAME_SPEED} Mb/s: it is at {speed} Mb/s",
+            "{} did not reach {FORCED_SPEED} Mb/s: it is at {speed} Mb/s",
             record.iface
         ),
         None => bail!(
-            "{} did not reach {GAME_SPEED} Mb/s: its link is not back",
+            "{} did not reach {FORCED_SPEED} Mb/s: its link is not back",
             record.iface
         ),
     }
-    // Shaping goes on after the link is back: on macOS a link change can
+    // Download shaping goes on after the link is back: on macOS a link change can
     // reload the firewall, which would drop rules loaded before it.
     record.pf_token = platform.shape(&record.iface)?;
     save_record(record)?;
     say!(
-        "Game mode on: {} at {GAME_SPEED} Mb/s, downloads shaped to {SHAPED_MBIT} Mbit/s.",
+        "Shaping on: {} at {FORCED_SPEED} Mb/s, downloads shaped to {SHAPED_MBIT} Mbit/s.",
         record.iface
     );
     Ok(())
 }
 
 /// Undoes `record`, finding its interface by MAC address in case it was
-/// renamed, and forgets it. Shaping goes first, so a failure part-way leaves
+/// renamed, and forgets it. Download shaping goes first, so a failure part-way leaves
 /// at worst a slower link, never a shaper on a gigabit link.
-fn switch_off(platform: &dyn Platform, record: &GameRecord) -> Result<()> {
+fn switch_off(platform: &dyn Platform, record: &ShapingRecord) -> Result<()> {
     root::authenticate()?;
     let current = find(platform, record);
     let name = current
@@ -298,14 +298,14 @@ fn switch_off(platform: &dyn Platform, record: &GameRecord) -> Result<()> {
     platform.unshape(name, record.pf_token.as_deref());
     if current.is_some() {
         platform.restore_auto_speed(name)?;
-        let speed = wait_for_link(platform, record, |speed| speed != GAME_SPEED);
+        let speed = wait_for_link(platform, record, |speed| speed != FORCED_SPEED);
         say!(
-            "Game mode off: {name} {}, download shaping removed.",
+            "Shaping off: {name} {}, download shaping removed.",
             describe_link(speed, speed.is_some())
         );
     } else {
         say!(
-            "Game mode off. {} is gone, so its speed resets when it is plugged back in.",
+            "Shaping off. {} is gone, so its speed resets when it is plugged back in.",
             record.iface
         );
     }
@@ -320,7 +320,7 @@ fn pick(platform: &dyn Platform, requested: Option<&str>) -> Result<Iface> {
     )
 }
 
-fn find(platform: &dyn Platform, record: &GameRecord) -> Option<Iface> {
+fn find(platform: &dyn Platform, record: &ShapingRecord) -> Option<Iface> {
     iface::find(platform.interfaces().ok()?, &record.iface, &record.mac)
 }
 
@@ -328,7 +328,7 @@ fn find(platform: &dyn Platform, record: &GameRecord) -> Option<Iface> {
 /// `LINK_TIMEOUT`, and returns the last speed seen.
 fn wait_for_link(
     platform: &dyn Platform,
-    record: &GameRecord,
+    record: &ShapingRecord,
     accept: impl Fn(u32) -> bool,
 ) -> Option<u32> {
     let deadline = Instant::now() + link_timeout();
@@ -366,26 +366,26 @@ fn finish_command(
     }
 }
 
-/// Whether `lum net game` has left a record: cheap to find out, unlike [`tray_line`]. Game mode
+/// Whether `lum net on` has left a record: cheap to find out, unlike [`tray_line`]. Shaping
 /// may still be off, as after a reboot.
-pub(crate) fn game_recorded() -> bool {
-    crate::paths::net_game_state_file().is_ok_and(|path| path.exists())
+pub(crate) fn shaping_recorded() -> bool {
+    crate::paths::net_shaping_state_file().is_ok_and(|path| path.exists())
 }
 
-/// The status tray's line for game mode, or `None` when it is off, as it is when the record is
+/// The status tray's line for shaping, or `None` when it is off, as it is when the record is
 /// left over from before a reboot.
 pub(crate) fn tray_line() -> Option<String> {
     let platform = platform().ok()?;
     let record = load_record().ok()??;
-    platform.is_applied(&record).then(|| game_line(&record))
+    platform.is_applied(&record).then(|| shaping_line(&record))
 }
 
-fn game_line(record: &GameRecord) -> String {
-    format!("Game mode on for {} since {}", record.iface, record.started)
+fn shaping_line(record: &ShapingRecord) -> String {
+    format!("Shaping on for {} since {}", record.iface, record.started)
 }
 
-fn load_record() -> Result<Option<GameRecord>> {
-    let path = crate::paths::net_game_state_file()?;
+fn load_record() -> Result<Option<ShapingRecord>> {
+    let path = crate::paths::net_shaping_state_file()?;
     if !path.exists() {
         return Ok(None);
     }
@@ -396,8 +396,8 @@ fn load_record() -> Result<Option<GameRecord>> {
     Ok(Some(record))
 }
 
-fn save_record(record: &GameRecord) -> Result<()> {
-    let path = crate::paths::net_game_state_file()?;
+fn save_record(record: &ShapingRecord) -> Result<()> {
+    let path = crate::paths::net_shaping_state_file()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -406,7 +406,7 @@ fn save_record(record: &GameRecord) -> Result<()> {
 }
 
 fn remove_record() -> Result<()> {
-    let path = crate::paths::net_game_state_file()?;
+    let path = crate::paths::net_shaping_state_file()?;
     match fs::remove_file(&path) {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
             Err(error).with_context(|| format!("failed to remove {}", path.display()))
@@ -427,22 +427,22 @@ mod tests {
     }
 
     #[test]
-    fn the_tray_line_names_the_interface_and_when_game_mode_began() {
-        let record = GameRecord {
+    fn the_tray_line_names_the_interface_and_when_shaping_began() {
+        let record = ShapingRecord {
             iface: "eth0".to_owned(),
             mac: "02:00:00:00:00:01".to_owned(),
             started: "2026-11-12 20:00".to_owned(),
             pf_token: None,
         };
         assert_eq!(
-            game_line(&record),
-            "Game mode on for eth0 since 2026-11-12 20:00"
+            shaping_line(&record),
+            "Shaping on for eth0 since 2026-11-12 20:00"
         );
     }
 
     #[test]
     fn a_record_without_a_pf_token_still_parses() {
-        let record: GameRecord = serde_json::from_str(
+        let record: ShapingRecord = serde_json::from_str(
             r#"{"iface":"enp0s31f6","mac":"28:00:af:6f:ff:cb","started":"2026-11-12 19:40"}"#,
         )
         .unwrap();

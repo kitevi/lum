@@ -1,5 +1,5 @@
 //! lum's tray icon: the radio's controls while a station is loaded, and the
-//! status lines: the monitors `lum display` has HiDPI off on, and `lum net game`
+//! status lines: the monitors `lum display` has HiDPI off on, and `lum net on`
 //! while it is on. A station runner hosts it while a station is loaded;
 //! otherwise the status tray does (ADR-0022, ADR-0033). See `README.md`.
 //!
@@ -43,21 +43,21 @@ pub(crate) struct Radio {
 }
 
 /// What the tray says besides the radio: one inert menu line for each monitor
-/// `lum display` has HiDPI off on, and one while `lum net game` is on.
+/// `lum display` has HiDPI off on, and one while `lum net on` is in force.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct Status {
     pub(crate) display: Vec<String>,
-    pub(crate) game: Option<String>,
+    pub(crate) shaping: Option<String>,
 }
 
 impl Status {
     pub(crate) fn is_empty(&self) -> bool {
-        self.display.is_empty() && self.game.is_none()
+        self.display.is_empty() && self.shaping.is_none()
     }
 
     /// The menu lines, in order.
     fn lines(&self) -> impl Iterator<Item = &String> {
-        self.display.iter().chain(&self.game)
+        self.display.iter().chain(&self.shaping)
     }
 }
 
@@ -86,8 +86,8 @@ fn toggle_label(station: &str, paused: bool) -> String {
 }
 
 /// A line for the station, when one is loaded, one for the display, when it has
-/// HiDPI off, and one for game mode, when it is on.
-fn tooltip(station: Option<(&str, bool)>, display: bool, game: bool) -> String {
+/// HiDPI off, and one for shaping, when it is on.
+fn tooltip(station: Option<(&str, bool)>, display: bool, shaping: bool) -> String {
     let station = station.map(|(name, paused)| {
         if paused {
             format!("lum radio: {name} (paused)")
@@ -96,11 +96,11 @@ fn tooltip(station: Option<(&str, bool)>, display: bool, game: bool) -> String {
         }
     });
     let display = display.then(|| "lum display: HiDPI off".to_owned());
-    let game = game.then(|| "lum net: game mode on".to_owned());
+    let shaping = shaping.then(|| "lum net: shaping on".to_owned());
     station
         .into_iter()
         .chain(display)
-        .chain(game)
+        .chain(shaping)
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -112,7 +112,7 @@ fn tooltip(station: Option<(&str, bool)>, display: bool, game: bool) -> String {
 fn ink(look: Look, dark: Option<bool>) -> Ink {
     match dark {
         _ if !cfg!(target_os = "macos") => Ink::Colour,
-        Some(dark) if look.radio == Some(false) || look.game => Ink::MenuBar { dark },
+        Some(dark) if look.radio == Some(false) || look.shaping => Ink::MenuBar { dark },
         _ => Ink::Template,
     }
 }
@@ -185,14 +185,14 @@ fn face(
 ) -> Result<((Icon, Ink), String)> {
     let station = radio.map(|radio| (radio.station, radio.playback.is_paused()));
     let display = !status.display.is_empty();
-    let game = status.game.is_some();
+    let shaping = status.shaping.is_some();
     let look = Look {
         radio: station.map(|(_, paused)| paused),
         // The status tray keeps its monitor while it hides without lines.
         monitor: display || radio.is_none(),
-        game,
+        shaping,
     };
-    Ok((tray_image(look, dark)?, tooltip(station, display, game)))
+    Ok((tray_image(look, dark)?, tooltip(station, display, shaping)))
 }
 
 /// The radio's part of the menu: the Stop/Play toggle, the station list, a
@@ -741,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn tooltip_has_a_line_each_for_the_station_the_display_and_game_mode() {
+    fn tooltip_has_a_line_each_for_the_station_the_display_and_shaping() {
         let playing = Some(("Drone Zone", false));
         assert_eq!(tooltip(playing, false, false), "lum radio: Drone Zone");
         assert_eq!(
@@ -749,29 +749,26 @@ mod tests {
             "lum radio: Drone Zone (paused)"
         );
         assert_eq!(tooltip(None, true, false), "lum display: HiDPI off");
-        assert_eq!(tooltip(None, false, true), "lum net: game mode on");
+        assert_eq!(tooltip(None, false, true), "lum net: shaping on");
         assert_eq!(
             tooltip(playing, true, true),
-            "lum radio: Drone Zone\nlum display: HiDPI off\nlum net: game mode on"
+            "lum radio: Drone Zone\nlum display: HiDPI off\nlum net: shaping on"
         );
     }
 
     #[test]
-    fn status_lines_are_the_display_lines_then_game_mode() {
+    fn status_lines_are_the_display_lines_then_shaping() {
         let status = Status {
             display: vec!["DELL U2723QE".to_owned(), "LG 27GL850".to_owned()],
-            game: Some("Game mode on for eth0".to_owned()),
+            shaping: Some("Shaping on for eth0".to_owned()),
         };
         let lines: Vec<&str> = status.lines().map(String::as_str).collect();
-        assert_eq!(
-            lines,
-            ["DELL U2723QE", "LG 27GL850", "Game mode on for eth0"]
-        );
+        assert_eq!(lines, ["DELL U2723QE", "LG 27GL850", "Shaping on for eth0"]);
         assert!(!status.is_empty());
         assert!(Status::default().is_empty());
         assert!(
             !Status {
-                game: Some("on".to_owned()),
+                shaping: Some("on".to_owned()),
                 ..Status::default()
             }
             .is_empty()
@@ -780,10 +777,10 @@ mod tests {
 
     #[test]
     fn macos_draws_its_own_tint_for_a_playing_radio_and_a_lit_screen() {
-        let look = |radio, game| Look {
+        let look = |radio, shaping| Look {
             radio,
             monitor: false,
-            game,
+            shaping,
         };
         let menu_bar = cfg!(target_os = "macos");
         for (look, own_tint) in [
@@ -802,13 +799,13 @@ mod tests {
     fn the_tray_accepts_the_icon_in_every_look() {
         for radio in [None, Some(false), Some(true)] {
             for monitor in [false, true] {
-                for game in [false, true] {
-                    if radio.is_some() || monitor || game {
+                for shaping in [false, true] {
+                    if radio.is_some() || monitor || shaping {
                         for dark in [None, Some(false), Some(true)] {
                             let look = Look {
                                 radio,
                                 monitor,
-                                game,
+                                shaping,
                             };
                             assert!(tray_image(look, dark).is_ok(), "{look:?} {dark:?}");
                         }

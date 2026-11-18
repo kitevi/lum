@@ -58,7 +58,7 @@ While a station runner is alive it shows a system tray icon (ADR-0022) whose men
 - `Quit radio` is `lum radio stop` from the tray: the runner removes the state file if it still names its own PID, kills its ffplay and exits, so `status` reports `stopped`.
 - These requests run on the tray's thread (`handle_tray_request` in `mod.rs`). The runner then returns from `main` without joining the supervisor, which `Playback::halt` has parked for good; do not make the supervisor loops learn a second way to end.
 - The runner records `paused` in `radio-player.json` so `status` stays truthful; see Runtime Semantics.
-- While the status tray is up (`lum display off` on macOS, `lum net game` on Linux and macOS), the menu starts with its lines and the icon becomes a monitor with the radio over its corner, the screen filled in for game mode. How the tray is hosted, built and drawn is in `src/tray/README.md`.
+- While the status tray is up (`lum display off` on macOS, `lum net on` on Linux and macOS), the menu starts with its lines and the icon becomes a monitor with the radio over its corner, the screen filled in for shaping. How the tray is hosted, built and drawn is in `src/tray/README.md`.
 - Windows caveat: `lum radio stop` ends the runner with TerminateProcess, and Windows can leave the icon of a killed process in the notification area until the mouse passes over it. A graceful stop path would fix that if it matters.
 
 ## Supported Streams

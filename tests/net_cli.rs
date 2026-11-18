@@ -14,23 +14,23 @@ fn net(state: &TempDir) -> Command {
 }
 
 #[test]
-fn net_help_lists_the_modes() {
+fn net_help_lists_its_commands() {
     let state = TempDir::new().unwrap();
     net(&state)
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("game"))
-        .stdout(contains("normal"))
-        .stdout(contains("status"))
-        .stdout(contains("test"));
+        .stdout(contains("  on "))
+        .stdout(contains("  off "))
+        .stdout(contains("  status "))
+        .stdout(contains("  test "));
 }
 
 #[test]
-fn net_game_help_documents_the_forwarded_command() {
+fn net_on_help_documents_the_forwarded_command() {
     let state = TempDir::new().unwrap();
     net(&state)
-        .args(["game", "--help"])
+        .args(["on", "--help"])
         .assert()
         .success()
         .stdout(contains("COMMAND"))
@@ -38,13 +38,13 @@ fn net_game_help_documents_the_forwarded_command() {
 }
 
 #[test]
-fn net_normal_without_game_mode_changes_nothing() {
+fn net_off_without_shaping_changes_nothing() {
     let state = TempDir::new().unwrap();
     net(&state)
-        .arg("normal")
+        .arg("off")
         .assert()
         .success()
-        .stdout(contains("Game mode is not on."));
+        .stdout(contains("Shaping is not on."));
 }
 
 #[test]

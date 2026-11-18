@@ -34,7 +34,7 @@ pub enum Commands {
     /// Internal radio station loop runner.
     #[usage(name = "__radio_direct_runner", hide)]
     RadioDirectRunner { code: String },
-    /// Internal status tray, shown while `lum display off` or `lum net game` is in force.
+    /// Internal status tray, shown while `lum display off` or `lum net on` is in force.
     #[usage(name = "__status_tray", hide)]
     StatusTray,
     /// Internal Git credential helper.
@@ -91,7 +91,7 @@ pub enum Commands {
         #[usage(subcommand)]
         command: VolCommand,
     },
-    /// Switch the wired connection between normal and game mode. (Linux and macOS)
+    /// Switch shaping of the wired connection on and off. (Linux and macOS)
     Net {
         #[usage(subcommand)]
         command: NetCommand,
@@ -398,11 +398,11 @@ pub enum YtCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum NetCommand {
     /// Force 100 Mb/s and shape downloads. Given a command, run it and switch back when it exits.
-    Game {
+    On {
         /// Wired interface to use instead of detecting it.
         #[usage(long)]
         iface: Option<String>,
-        /// Command to run in game mode.
+        /// Command to run while shaping is on.
         #[usage(
             value_name = "COMMAND",
             double_dash = "automatic",
@@ -411,8 +411,8 @@ pub enum NetCommand {
         command: Vec<String>,
     },
     /// Restore automatic link speed and remove download shaping.
-    Normal,
-    /// Show game mode and the wired interfaces.
+    Off,
+    /// Show whether shaping is on, and the wired interfaces.
     Status,
     /// Measure latency idle and under load, and count receive errors.
     Test {
@@ -520,10 +520,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_net_game_with_a_forwarded_command() {
+    fn parses_net_on_with_a_forwarded_command() {
         let cli = parse(&[
             "net",
-            "game",
+            "on",
             "--iface",
             "enp0s31f6",
             "--",
@@ -534,7 +534,7 @@ mod tests {
         ]);
         match cli.command {
             Commands::Net {
-                command: NetCommand::Game { iface, command },
+                command: NetCommand::On { iface, command },
             } => {
                 assert_eq!(iface.as_deref(), Some("enp0s31f6"));
                 assert_eq!(
@@ -542,31 +542,31 @@ mod tests {
                     ["flatpak", "run", "--branch=master", "com.nvidia.geforcenow"]
                 );
             }
-            _ => panic!("expected net game"),
+            _ => panic!("expected net on"),
         }
     }
 
     #[test]
-    fn parses_net_game_forwarding_without_a_double_dash() {
-        let cli = parse(&["net", "game", "open", "-W", "-a", "GeForce NOW"]);
+    fn parses_net_on_forwarding_without_a_double_dash() {
+        let cli = parse(&["net", "on", "open", "-W", "-a", "GeForce NOW"]);
         match cli.command {
             Commands::Net {
-                command: NetCommand::Game { iface, command },
+                command: NetCommand::On { iface, command },
             } => {
                 assert_eq!(iface, None);
                 assert_eq!(command, ["open", "-W", "-a", "GeForce NOW"]);
             }
-            _ => panic!("expected net game"),
+            _ => panic!("expected net on"),
         }
     }
 
     #[test]
-    fn parses_bare_net_game() {
-        let cli = parse(&["net", "game"]);
+    fn parses_bare_net_on() {
+        let cli = parse(&["net", "on"]);
         assert!(matches!(
             cli.command,
             Commands::Net {
-                command: NetCommand::Game { iface: None, ref command }
+                command: NetCommand::On { iface: None, ref command }
             } if command.is_empty()
         ));
     }

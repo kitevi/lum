@@ -6,7 +6,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, ensure};
 
-use super::{GameRecord, Platform, SHAPED_MBIT, iface, iface::Iface, root};
+use super::{Platform, SHAPED_MBIT, ShapingRecord, iface, iface::Iface, root};
 
 /// The stock `/etc/pf.conf` evaluates `dummynet-anchor "com.apple/*"`, so a
 /// rule loaded here takes effect without touching the main ruleset, which
@@ -34,9 +34,9 @@ impl Platform for MacOs {
         Ok(())
     }
 
-    fn force_game_speed(&self, iface: &str) -> Result<()> {
+    fn force_speed(&self, iface: &str) -> Result<()> {
         ensure!(
-            iface::supports_game_media(&output("ifconfig", &["-m", iface])?),
+            iface::supports_forced_media(&output("ifconfig", &["-m", iface])?),
             "{iface} does not offer 100baseTX full-duplex"
         );
         // ifconfig instead of `networksetup -setMedia`, which saves the
@@ -82,9 +82,9 @@ impl Platform for MacOs {
         }
     }
 
-    fn is_applied(&self, record: &GameRecord) -> bool {
+    fn is_applied(&self, record: &ShapingRecord) -> bool {
         // Seeing the pipe needs root; a reboot or replug resets the media,
-        // so media still set by hand means game mode is still on.
+        // so media still set by hand means shaping is still on.
         self.interfaces().is_ok_and(|all| {
             all.iter()
                 .any(|iface| iface.forced && iface.mac.eq_ignore_ascii_case(&record.mac))

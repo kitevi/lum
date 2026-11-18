@@ -1,4 +1,4 @@
-//! The few commands game mode runs as root, through sudo.
+//! The few commands shaping runs as root, through sudo.
 
 use std::{
     io::Write as _,
@@ -66,7 +66,7 @@ pub(super) fn run_quiet(args: &[&str]) {
     }
 }
 
-/// Keeps sudo's cached credentials fresh while a game runs, so switching back
+/// Keeps sudo's cached credentials fresh while a wrapped command runs, so switching back
 /// hours later does not wait on a password prompt. Stops when the returned
 /// sender is dropped.
 pub(super) fn keep_alive() -> mpsc::Sender<()> {

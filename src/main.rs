@@ -39,7 +39,7 @@ fn main() {
     }
 
     if let Err(error) = run(cli) {
-        // Not `eprintln!`, which panics when stderr is gone: `lum net game`
+        // Not `eprintln!`, which panics when stderr is gone: `lum net on`
         // can outlive the terminal it was started from.
         let _ = writeln!(io::stderr(), "{error:#}");
         tracing::error!(error = ?error, "command failed");

@@ -6,7 +6,7 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 
-use super::{GAME_SPEED, GameRecord, Platform, SHAPED_MBIT, iface, iface::Iface, root};
+use super::{FORCED_SPEED, Platform, SHAPED_MBIT, ShapingRecord, iface, iface::Iface, root};
 
 const SYSFS: &str = "/sys/class/net";
 /// A fixed name: deriving it from the interface (`ifb4<iface>`) breaks on USB
@@ -36,8 +36,8 @@ impl Platform for Linux {
         Ok(())
     }
 
-    fn force_game_speed(&self, iface: &str) -> Result<()> {
-        let speed = GAME_SPEED.to_string();
+    fn force_speed(&self, iface: &str) -> Result<()> {
+        let speed = FORCED_SPEED.to_string();
         // 0x008 advertises 100baseT/Full only, so autonegotiation still runs
         // (forcing the speed with autoneg off can leave a duplex mismatch).
         root::run(&[
@@ -77,7 +77,7 @@ impl Platform for Linux {
         root::run_quiet(&["ip", "link", "del", IFB]);
     }
 
-    fn is_applied(&self, _record: &GameRecord) -> bool {
+    fn is_applied(&self, _record: &ShapingRecord) -> bool {
         sysfs().join(IFB).exists()
     }
 }
