@@ -19,7 +19,7 @@ pub struct ScanArgs {
     pub offline: bool,
 
     /// Maximum concurrent git operations.
-    #[usage(short = 'j', default = "4")]
+    #[usage(short = 'j', long, default = "4")]
     pub jobs: usize,
 }
 
@@ -27,6 +27,7 @@ pub fn run(args: &ScanArgs) -> Result<()> {
     ensure_git_on_path()?;
     let root = args.path.as_deref().unwrap_or(".");
     let root = Path::new(root);
+    anyhow::ensure!(root.is_dir(), "not a directory: {}", root.display());
     scan_path(root, args.hidden, args.jobs, args.offline)?;
     Ok(())
 }

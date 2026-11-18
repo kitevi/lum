@@ -15,7 +15,8 @@ const LONG_VERSION: &str = concat!(
     version = LONG_VERSION,
     about = "Opinionated CLI toolbox",
     arg_required_else_help,
-    completion
+    completion,
+    unknown_flags = "error"
 )]
 pub struct Cli {
     #[usage(subcommand)]
@@ -153,20 +154,26 @@ pub enum EnvShell {
 pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
     Init {
+        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
     },
     /// Set a managed environment variable alias.
     Set {
+        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
+        /// Alias of the variable, as `lum env list` shows it.
         alias: String,
+        /// Value to store and export.
         value: String,
     },
     /// Unset a managed environment variable alias.
     Unset {
+        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
+        /// Alias of the variable, as `lum env list` shows it.
         alias: String,
     },
     /// Show managed aliases and forced defaults.
@@ -182,7 +189,9 @@ pub enum EnvCommand {
 pub enum ToolsCommand {
     /// Install a managed tool.
     Install {
+        /// Tool name, as `lum tools list` shows it.
         tool: String,
+        /// Overwrite a binary lum does not manage, or reinstall one it does.
         #[usage(long)]
         force: bool,
     },
@@ -190,7 +199,10 @@ pub enum ToolsCommand {
     #[usage(visible_alias = "ls")]
     List,
     /// Show detailed status for one tool.
-    Status { tool: String },
+    Status {
+        /// Tool name, as `lum tools list` shows it.
+        tool: String,
+    },
     /// Install missing tools and update outdated tools.
     Sync {
         #[usage(long)]
@@ -198,19 +210,26 @@ pub enum ToolsCommand {
     },
     /// Update one managed tool.
     Update {
+        /// Tool name, as `lum tools list` shows it.
         tool: String,
+        /// Reinstall even when the installed version is current.
         #[usage(long)]
         force: bool,
     },
     /// Show installed and latest version for one tool.
-    Version { tool: String },
+    Version {
+        /// Tool name, as `lum tools list` shows it.
+        tool: String,
+    },
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum AppsCommand {
     /// Install an app and apply its settings.
     Install {
+        /// App name, as `lum apps list` shows it.
         app: String,
+        /// Replace an app lum did not install, or reinstall one it did.
         #[usage(long)]
         force: bool,
     },
@@ -218,10 +237,15 @@ pub enum AppsCommand {
     #[usage(visible_alias = "ls")]
     List,
     /// Show install details and settings for one app.
-    Status { app: String },
+    Status {
+        /// App name, as `lum apps list` shows it.
+        app: String,
+    },
     /// Update one app and reapply its settings.
     Update {
+        /// App name, as `lum apps list` shows it.
         app: String,
+        /// Reinstall even when the installed version is current.
         #[usage(long)]
         force: bool,
     },
@@ -231,9 +255,15 @@ pub enum AppsCommand {
         dry_run: bool,
     },
     /// Show installed and latest version for one app.
-    Version { app: String },
+    Version {
+        /// App name, as `lum apps list` shows it.
+        app: String,
+    },
     /// Remove an app and its launcher; its settings and saves stay.
-    Uninstall { app: String },
+    Uninstall {
+        /// App name, as `lum apps list` shows it.
+        app: String,
+    },
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
@@ -260,9 +290,15 @@ pub enum GitIdCommand {
     /// Show which git identity applies to the current directory.
     Where,
     /// Show detailed information about one git identity.
-    Info { identity: String },
+    Info {
+        /// Identity name from the git-id config.
+        identity: String,
+    },
     /// Print an identity public key to stdout.
-    Pubkey { identity: String },
+    Pubkey {
+        /// Identity name from the git-id config.
+        identity: String,
+    },
     /// Show files and folders managed by git-id.
     Paths,
 }
@@ -281,13 +317,13 @@ pub enum MirrorCommand {
     /// Clone or update all configured mirror repositories.
     Sync {
         /// Maximum concurrent git operations.
-        #[usage(short = 'j', default = "4")]
+        #[usage(short = 'j', long, default = "4")]
         jobs: usize,
     },
     /// Check if local mirrors are up to date with their remotes.
     Status {
         /// Maximum concurrent git operations.
-        #[usage(short = 'j', default = "4")]
+        #[usage(short = 'j', long, default = "4")]
         jobs: usize,
         /// Compare against cached remote refs instead of contacting remotes.
         #[usage(long)]
@@ -378,12 +414,17 @@ pub enum FontCommand {
     List,
     /// Install a managed font.
     Install {
+        /// Font name, as `lum font list` shows it.
         font: String,
+        /// Reinstall a font that is already installed.
         #[usage(long)]
         force: bool,
     },
     /// Uninstall a managed font.
-    Uninstall { font: String },
+    Uninstall {
+        /// Font name, as `lum font list` shows it.
+        font: String,
+    },
 }
 
 // Only the macOS build reads the command; elsewhere `lum display` refuses to run.

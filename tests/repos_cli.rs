@@ -94,6 +94,22 @@ fn scan_reports_clean_repo() {
 }
 
 #[test]
+fn scan_takes_jobs_as_a_long_flag() {
+    let tmp = TempDir::new().unwrap();
+    let repo = tmp.path().join("my-repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    create_clean_repo(&repo);
+
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["repos", "scan", "--offline", "--jobs", "2"])
+        .arg(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("my-repo"));
+}
+
+#[test]
 fn scan_notes_when_branch_has_no_upstream() {
     let tmp = TempDir::new().unwrap();
     let repo = tmp.path().join("no-upstream");
@@ -422,14 +438,15 @@ fn scan_reports_worktree_with_git_file() {
 }
 
 #[test]
-fn scan_warns_about_missing_root() {
+fn scan_rejects_a_missing_root() {
     let tmp = TempDir::new().unwrap();
     let mut cmd = repos_scan_offline_in(tmp.path());
     cmd.arg(tmp.path().join("missing"));
     cmd.assert()
-        .success()
+        .failure()
+        .code(1)
         .stdout(predicates::str::is_empty())
-        .stderr(predicates::str::contains("warning:"));
+        .stderr(predicates::str::contains("not a directory:"));
 }
 
 #[test]

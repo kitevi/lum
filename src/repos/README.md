@@ -5,13 +5,13 @@
 ## CLI Shape
 
 ```
-lum repos scan [--hidden] [-j N] [PATH]
+lum repos scan [--hidden] [--offline] [-j, --jobs N] [PATH]
 lum repos mirror config-path
 lum repos mirror dir
 lum repos mirror init
 lum repos mirror list
-lum repos mirror sync [-j N]
-lum repos mirror status [-j N] [--offline]
+lum repos mirror sync [-j, --jobs N]
+lum repos mirror status [-j, --jobs N] [--offline]
 lum repos mirror watch [TAG]
 ```
 
@@ -27,10 +27,10 @@ Output: `<path>  <branch>  <status>; <upstream-sync>`
 
 | Flag | Purpose |
 |------|---------|
-| `[PATH]` | Scan root; defaults to `.` |
+| `[PATH]` | Scan root; defaults to `.`. A path that is not a directory is an error |
 | `--hidden` | Descend into dot-prefixed directories |
 | `--offline` | Use cached remote refs only; do not fetch |
-| `-j N` | Max concurrent git operations (default 4) |
+| `-j, --jobs N` | Max concurrent git operations (default 4) |
 
 Skips symlinks, `.git/` directories, and (by default) hidden directories. Reports nested repos, including paths excluded by `.gitignore` or `.ignore` files.
 

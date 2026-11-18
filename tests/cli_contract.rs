@@ -125,6 +125,17 @@ fn invalid_flag_exits_2_with_stderr_diagnostic() {
 }
 
 #[test]
+fn a_mistyped_flag_is_an_error_rather_than_a_value() {
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["repos", "scan", "--hiden"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicates::str::contains("unexpected argument '--hiden'"));
+}
+
+#[test]
 fn mirror_watch_hides_cycles_flag_from_help() {
     Command::cargo_bin("lum")
         .unwrap()
