@@ -5,7 +5,7 @@ use crate::cli::GitIdCommand;
 #[path = "git_id/artifacts.rs"]
 mod artifacts;
 #[path = "git_id/config.rs"]
-mod config;
+pub(crate) mod config;
 #[path = "git_id/credential.rs"]
 mod credential;
 

@@ -1,4 +1,4 @@
-mod catalog;
+pub(crate) mod catalog;
 pub(crate) mod shell;
 mod state;
 

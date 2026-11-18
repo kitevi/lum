@@ -1,3 +1,5 @@
+mod complete;
+
 use crate::repos::scanner::ScanArgs;
 
 /// Full version string including commit hash and build timestamp.
@@ -132,6 +134,7 @@ pub enum RadioCommand {
     /// Play a station in the background, in place of the one playing.
     Play {
         /// Station code, as `lum radio list` shows it.
+        #[usage(complete = complete::stations)]
         station: String,
     },
     /// Play a random station, never the one playing.
@@ -193,6 +196,7 @@ pub enum EnvCommand {
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
+        #[usage(complete = complete::env_aliases)]
         alias: String,
         /// Value to store and export.
         value: String,
@@ -203,6 +207,7 @@ pub enum EnvCommand {
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
+        #[usage(complete = complete::env_aliases)]
         alias: String,
     },
     /// Show managed aliases and forced defaults.
@@ -216,6 +221,7 @@ pub enum ToolsCommand {
     /// Install a managed tool.
     Install {
         /// Tool name, as `lum tools list` shows it.
+        #[usage(complete = complete::tools)]
         tool: String,
         /// Overwrite a binary lum does not manage, or reinstall one it does.
         #[usage(long)]
@@ -226,6 +232,7 @@ pub enum ToolsCommand {
     /// Show install details and the latest version for one tool.
     Status {
         /// Tool name, as `lum tools list` shows it.
+        #[usage(complete = complete::tools)]
         tool: String,
     },
     /// Install missing tools and update outdated tools.
@@ -236,6 +243,7 @@ pub enum ToolsCommand {
     /// Update one managed tool.
     Update {
         /// Tool name, as `lum tools list` shows it.
+        #[usage(complete = complete::tools)]
         tool: String,
         /// Reinstall even when the installed version is current.
         #[usage(long)]
@@ -244,6 +252,7 @@ pub enum ToolsCommand {
     /// Remove a tool lum installed.
     Uninstall {
         /// Tool name, as `lum tools list` shows it.
+        #[usage(complete = complete::tools)]
         tool: String,
     },
 }
@@ -253,6 +262,7 @@ pub enum AppsCommand {
     /// Install an app and apply its settings.
     Install {
         /// App name, as `lum apps list` shows it.
+        #[usage(complete = complete::apps)]
         app: String,
         /// Replace an app lum did not install, or reinstall one it did.
         #[usage(long)]
@@ -263,11 +273,13 @@ pub enum AppsCommand {
     /// Show install details, the latest version and settings for one app.
     Status {
         /// App name, as `lum apps list` shows it.
+        #[usage(complete = complete::apps)]
         app: String,
     },
     /// Update one app and reapply its settings.
     Update {
         /// App name, as `lum apps list` shows it.
+        #[usage(complete = complete::apps)]
         app: String,
         /// Reinstall even when the installed version is current.
         #[usage(long)]
@@ -281,6 +293,7 @@ pub enum AppsCommand {
     /// Remove an app and its launcher; its settings and saves stay.
     Uninstall {
         /// App name, as `lum apps list` shows it.
+        #[usage(complete = complete::apps)]
         app: String,
     },
 }
@@ -311,11 +324,13 @@ pub enum GitIdCommand {
     /// Show detailed information about one git identity.
     Info {
         /// Identity name from the git-id config.
+        #[usage(complete = complete::identities)]
         identity: String,
     },
     /// Print an identity public key to stdout.
     Pubkey {
         /// Identity name from the git-id config.
+        #[usage(complete = complete::identities)]
         identity: String,
     },
     /// Show files and folders managed by git-id.
@@ -350,6 +365,7 @@ pub enum MirrorCommand {
     /// Watch mirror repos for upstream changes and send desktop notifications.
     Watch {
         /// Tag to filter repos by. Omit to see guidance.
+        #[usage(complete = complete::mirror_tags)]
         tag: Option<String>,
         /// Number of poll cycles to run. Test/support plumbing; omit for infinite (Ctrl+C to stop).
         #[usage(long, hide)]
@@ -400,7 +416,7 @@ pub enum NetCommand {
     /// Force 100 Mb/s and shape downloads. Given a command, run it and switch back when it exits.
     On {
         /// Wired interface to use instead of detecting it.
-        #[usage(long)]
+        #[usage(long, complete = complete::wired_interfaces)]
         iface: Option<String>,
         /// Command to run while shaping is on.
         #[usage(
@@ -417,7 +433,7 @@ pub enum NetCommand {
     /// Measure latency idle and under load, and count receive errors.
     Test {
         /// Wired interface to use instead of detecting it.
-        #[usage(long)]
+        #[usage(long, complete = complete::wired_interfaces)]
         iface: Option<String>,
         /// Seconds to load the link (5–120).
         #[usage(long, default = "20")]
@@ -432,6 +448,7 @@ pub enum FontCommand {
     /// Install a managed font.
     Install {
         /// Font name, as `lum font list` shows it.
+        #[usage(complete = complete::fonts)]
         font: String,
         /// Reinstall a font that is already installed.
         #[usage(long)]
@@ -440,11 +457,13 @@ pub enum FontCommand {
     /// Show where a font installs and whether it is installed.
     Status {
         /// Font name, as `lum font list` shows it.
+        #[usage(complete = complete::fonts)]
         font: String,
     },
     /// Uninstall a managed font.
     Uninstall {
         /// Font name, as `lum font list` shows it.
+        #[usage(complete = complete::fonts)]
         font: String,
     },
 }

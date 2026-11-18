@@ -316,3 +316,28 @@ fn off_ignores_a_bridge_with_the_same_address() {
     assert_eq!(fake.log(), SWITCH_OFF);
     assert!(!fake.record().exists());
 }
+
+#[test]
+fn iface_completes_with_the_wired_interfaces_only() {
+    let fake = Fake::new();
+    let br0 = fake.path("sys/br0");
+    fs::create_dir_all(&br0).unwrap();
+    for (file, value) in [
+        ("type", "1"),
+        ("carrier", "1"),
+        ("address", "02:00:00:00:00:02"),
+    ] {
+        fs::write(br0.join(file), format!("{value}\n")).unwrap();
+    }
+
+    fake.lum(&[
+        "__complete_word__",
+        "--shell",
+        "fish",
+        "--line",
+        "lum net on --iface ",
+    ])
+    .assert()
+    .success()
+    .stdout("eth0\n");
+}

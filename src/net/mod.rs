@@ -100,6 +100,18 @@ fn platform() -> Result<&'static dyn Platform> {
     }
 }
 
+/// The wired interfaces' names, for completing `--iface`. None where lum net
+/// is unsupported or the interfaces cannot be read.
+pub(crate) fn wired_interfaces() -> Vec<String> {
+    platform()
+        .and_then(|platform| platform.interfaces())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|iface| iface.wired)
+        .map(|iface| iface.name)
+        .collect()
+}
+
 /// What `lum net on` changed, kept in `net-shaping.json` so `lum net off`
 /// can undo it even from another terminal or after lum was killed.
 #[derive(Debug, Serialize, Deserialize)]
