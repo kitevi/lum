@@ -411,6 +411,11 @@ pub enum FontCommand {
         #[usage(long)]
         force: bool,
     },
+    /// Show where a font installs and whether it is installed.
+    Status {
+        /// Font name, as `lum font list` shows it.
+        font: String,
+    },
     /// Uninstall a managed font.
     Uninstall {
         /// Font name, as `lum font list` shows it.

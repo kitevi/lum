@@ -77,6 +77,43 @@ fn font_list_shows_installed_for_present_font_dir() {
 }
 
 #[test]
+fn font_status_shows_the_path_and_whether_it_is_installed() {
+    let home = TempDir::new().unwrap();
+    let font_dir = test_font_dir(&home).join("dmca-sans-serif");
+
+    lum_with_env(&home)
+        .args(["font", "status", "dmca-sans-serif"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "Font:              dmca-sans-serif",
+        ))
+        .stdout(predicates::str::contains(format!(
+            "Path:              {}",
+            font_dir.display()
+        )))
+        .stdout(predicates::str::contains("Installed:         no"));
+
+    std::fs::create_dir_all(&font_dir).unwrap();
+    lum_with_env(&home)
+        .args(["font", "status", "dmca-sans-serif"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Installed:         yes"));
+}
+
+#[test]
+fn font_status_rejects_unknown_font() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["font", "status", "nonexistent"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("unknown font \"nonexistent\""));
+}
+
+#[test]
 fn font_install_rejects_unknown_font() {
     let home = TempDir::new().unwrap();
 

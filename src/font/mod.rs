@@ -11,6 +11,7 @@ pub fn run(command: FontCommand) -> Result<()> {
     match command {
         FontCommand::List => list(),
         FontCommand::Install { font, force } => install_cmd(&font, force),
+        FontCommand::Status { font } => status_cmd(&font),
         FontCommand::Uninstall { font } => uninstall_cmd(&font),
     }
 }
@@ -25,6 +26,19 @@ fn list() -> Result<()> {
         };
         println!("{:<18} {:<12} {}", font.name, label, font.description);
     }
+    Ok(())
+}
+
+fn status_cmd(font: &str) -> Result<()> {
+    let spec = catalog::lookup_font(font)?;
+    let dir = paths::font_install_dir(spec)?;
+    println!("Font:              {}", spec.name);
+    println!("Description:       {}", spec.description);
+    println!("Path:              {}", dir.display());
+    println!(
+        "Installed:         {}",
+        if dir.exists() { "yes" } else { "no" }
+    );
     Ok(())
 }
 
