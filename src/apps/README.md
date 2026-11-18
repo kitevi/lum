@@ -56,9 +56,9 @@ Where the apps keep their config and saves:
 | `snes9x` config | `$XDG_CONFIG_HOME/snes9x/snes9x.conf` | user defaults | `snes9x.conf` beside the program |
 | `snes9x` saves | beside each ROM | `~/Library/Application Support/Snes9x` | `~\ROMs` (lum sets it) |
 
-mGBA reads `config.ini` from the XDG config folder on macOS too, not from `~/Library` (`mCoreConfigDirectory` upstream). snes9x 1.63 for Mac keeps its preferences in user defaults rather than a file, and always saves to Application Support (`saveInROMFolder` is fixed at 2 upstream), so lum owns nothing there and `lum backup roms` does not cover those saves.
+mGBA reads `config.ini` from the XDG config folder on macOS too, not from `~/Library` (`mCoreConfigDirectory` upstream). snes9x 1.63 for Mac keeps its preferences in user defaults rather than a file, and always saves to Application Support (`saveInROMFolder` is fixed at 2 upstream), so lum owns nothing there and `lum backup create roms` does not cover those saves.
 
-Adding a setting is one `Setting { section, key, value }` in `catalog.rs`. A value is fixed text or the ROMs folder (`~/ROMs`), which `lum backup roms` backs up; lum creates that folder when it sets it. Settings are hardcoded, like env aliases and the tools catalog, so one lum binary configures every machine the same way.
+Adding a setting is one `Setting { section, key, value }` in `catalog.rs`. A value is fixed text or the ROMs folder (`~/ROMs`), which `lum backup create roms` backs up; lum creates that folder when it sets it. Settings are hardcoded, like env aliases and the tools catalog, so one lum binary configures every machine the same way.
 
 ## Dialects
 

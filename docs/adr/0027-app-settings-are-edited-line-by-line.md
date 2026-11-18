@@ -15,7 +15,7 @@ Owned settings also differ per platform now. snes9x's keys, file and format on W
 - lum edits a config file line by line. It rewrites only the lines of the keys it owns, adds a missing key after the last entry of its section or as a new section at the end, and leaves every other byte as the app wrote it: comments, order, spacing and line endings.
 - Each app's settings name a **dialect**, the rules its own parser reads a line by: inih for mGBA (split at the first `=` or `:`), and snes9x's ConfigFile (split at the first `=`, `#` comments, `##`, quotes). lum reads an owned value the way the app would and writes it the way the app does.
 - Settings belong to a build, not to an app, so an app can own different keys in a different file on each OS, or none.
-- A value is fixed text or the ROMs folder, `~/ROMs`, which `lum backup roms` backs up. lum creates the folder when it sets such a value.
+- A value is fixed text or the ROMs folder, `~/ROMs`, which `lum backup create roms` backs up. lum creates the folder when it sets such a value.
 - Where a key appears more than once, lum sets every copy; both apps read the last.
 - A config file that is not UTF-8 is refused rather than rewritten lossily.
 

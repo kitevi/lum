@@ -137,10 +137,29 @@ pub struct RadioArgs {
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum BackupCommand {
-    /// Backup and restore ~/.bio.
-    Bio { code: Option<String> },
-    /// Backup and restore ~/ROMs: ROMs and the saves mGBA keeps beside them.
-    Roms { code: Option<String> },
+    /// Archive a target, upload it and print the code that restores it.
+    Create {
+        /// What to back up.
+        #[usage(value_enum)]
+        target: BackupTargetName,
+    },
+    /// Download a backup and put it in place of the target, keeping the old one aside.
+    Restore {
+        /// What to restore.
+        #[usage(value_enum)]
+        target: BackupTargetName,
+        /// Code that `lum backup create` printed, such as jtPb.gz.
+        code: String,
+    },
+}
+
+/// What `lum backup` backs up and restores.
+#[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
+pub enum BackupTargetName {
+    /// ~/.bio (macOS and Linux).
+    Bio,
+    /// ~/ROMs: ROMs and the saves mGBA keeps beside them.
+    Roms,
 }
 
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]

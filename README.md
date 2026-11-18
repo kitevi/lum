@@ -206,7 +206,7 @@ Notes:
 - lum does not update an app, or change its settings, while it is running. Quit it first.
 - On Linux the AppImage is unpacked, so it runs without FUSE. Snes9x's AppImage still needs glibmm 2.4 from the system; on Arch, `sudo pacman -S glibmm`.
 - `lum apps uninstall` removes the app and its launcher, and keeps its saves. Its settings stay too, except snes9x's on Windows, which live in its program folder.
-- Keep ROMs in `~/ROMs`: `lum backup roms` backs them up with their saves, and `lum backup roms <code>` restores them on another machine. mGBA saves beside each ROM everywhere, and so does snes9x on Linux; on Windows lum points snes9x's saves at `~\ROMs`. Snes9x on macOS always saves to `~/Library/Application Support/Snes9x`, which that backup does not cover. Quit the emulator first.
+- Keep ROMs in `~/ROMs`: `lum backup create roms` backs them up with their saves, and `lum backup restore roms <code>` restores them on another machine. mGBA saves beside each ROM everywhere, and so does snes9x on Linux; on Windows lum points snes9x's saves at `~\ROMs`. Snes9x on macOS always saves to `~/Library/Application Support/Snes9x`, which that backup does not cover. Quit the emulator first.
 
 ## Other commands
 

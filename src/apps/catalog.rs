@@ -76,7 +76,7 @@ pub(crate) struct Setting {
 
 pub(crate) enum Value {
     Text(&'static str),
-    /// The ROMs folder that `lum backup roms` backs up, so saves kept there are
+    /// The ROMs folder that `lum backup create roms` backs up, so saves kept there are
     /// backed up with the games.
     RomsFolder,
 }

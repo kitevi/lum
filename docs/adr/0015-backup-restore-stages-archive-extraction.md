@@ -4,7 +4,7 @@ Status: Accepted
 
 ## Context
 
-`lum backup <target> <code>` restores by downloading the archive behind the
+`lum backup restore <target> <code>` restores by downloading the archive behind the
 code from a public, unauthenticated file host and unpacking it into the home
 directory. The download was checked by `verify_tar_gz`, but that check only
 required the archive to *contain* the target directory; any other entries

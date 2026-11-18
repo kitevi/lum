@@ -4,21 +4,23 @@ mod restore;
 mod target;
 mod upload;
 
-use crate::cli::BackupCommand;
+use crate::cli::{BackupCommand, BackupTargetName};
 
 pub fn run(command: BackupCommand) -> Result<()> {
     match command {
-        BackupCommand::Bio { code } => run_target(target::BIO, code),
-        BackupCommand::Roms { code } => run_target(target::ROMS, code),
+        BackupCommand::Create { target } => upload_target(allowed(target)?),
+        BackupCommand::Restore { target, code } => restore::restore_backup(allowed(target)?, &code),
     }
 }
 
-fn run_target(target: target::BackupTarget, code: Option<String>) -> Result<()> {
+/// The target a name stands for, once this OS is one it is backed up on.
+fn allowed(name: BackupTargetName) -> Result<target::BackupTarget> {
+    let target = match name {
+        BackupTargetName::Bio => target::BIO,
+        BackupTargetName::Roms => target::ROMS,
+    };
     target.ensure_current_os_allowed()?;
-    match code {
-        Some(code) => restore::restore_backup(target, &code),
-        None => upload_target(target),
-    }
+    Ok(target)
 }
 
 fn upload_target(target: target::BackupTarget) -> Result<()> {
@@ -82,7 +84,7 @@ fn upload_target(target: target::BackupTarget) -> Result<()> {
     println!("{url}");
     let code = upload::code_from_url(&url)?;
     println!(
-        "{} - Restore with: lum backup {} {}",
+        "{} - Restore with: lum backup restore {} {}",
         timestamp(),
         target.name,
         code
