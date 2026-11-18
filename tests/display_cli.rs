@@ -12,16 +12,23 @@ fn display(state: &TempDir) -> Command {
 }
 
 #[test]
-fn display_help_offers_on_off_and_srgb() {
+fn display_help_offers_on_off_srgb_and_status() {
     let state = TempDir::new().unwrap();
     display(&state)
         .arg("--help")
         .assert()
         .success()
-        .stdout(contains("Usage: lum display [SUBCOMMAND]"))
+        .stdout(contains("Usage: lum display <SUBCOMMAND>"))
         .stdout(contains("  on "))
         .stdout(contains("  off "))
-        .stdout(contains("  srgb "));
+        .stdout(contains("  srgb "))
+        .stdout(contains("  status "));
+}
+
+#[test]
+fn display_needs_a_command() {
+    let state = TempDir::new().unwrap();
+    display(&state).assert().code(2);
 }
 
 #[test]
@@ -39,6 +46,7 @@ fn display_rejects_an_unknown_command() {
 fn display_refuses_to_run_off_macos() {
     let state = TempDir::new().unwrap();
     display(&state)
+        .arg("status")
         .assert()
         .failure()
         .stderr(contains("lum display is only supported on macOS"));

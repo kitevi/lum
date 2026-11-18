@@ -5,7 +5,7 @@
 ## CLI Shape
 
 ```sh
-lum display        # show whether HiDPI is on
+lum display status # show whether HiDPI is on
 lum display on     # HiDPI at about the monitor's own size
 lum display off    # the monitor's plain resolution
 lum display srgb   # the sRGB color profile where none was picked; asks first
@@ -40,7 +40,7 @@ macOS only offers HiDPI sizes for monitors it treats as high-density. For the ot
 
 `off` lasts until logout, so a tray icon shows it until HiDPI is back on (ADR-0022).
 
-- The menu holds a disabled line for each monitor with HiDPI off, worded as `lum display` prints it.
+- The menu holds a disabled line for each monitor with HiDPI off, worded as `lum display status` prints it.
 - While a station is loaded, its runner's tray shows the lines above the radio's items, and its icon becomes the monitor with the radio over its corner.
 - Otherwise `off` starts the status tray (`src/tray/status.rs`): `lum __status_tray`, a process of its own with a monitor icon. It is the tray `lum net game` starts too (ADR-0033), so with game mode on its menu has that line as well and its screen is filled in blue, and it stays until both are over. It holds a lock on `status-tray.lock` in lum's state folder, so there is only ever one. A station's tray shows the lines only while that lock is held, so without `lum display off` a monitor at its plain resolution shows nothing.
 - Every 10 seconds the status tray reads the modes again (`READ_EVERY`); whether a station is loaded it checks every 2. A tray that leaves checks once more after releasing its lock and starts a new one if HiDPI is off again, so a `lum display off` racing its exit still gets an icon. It hides while a station is loaded and exits once HiDPI is back on everywhere and game mode is off, by `lum display on` or System Settings. While every monitor it manages is unplugged it stays, hidden, until one comes back or the session ends.
@@ -64,7 +64,7 @@ macOS only offers HiDPI sizes for monitors it treats as high-density. For the ot
 
 Picking the modes, the size difference, the size list, the file entries, which monitors are Retina, the monitors' labels and which monitors get sRGB are unit tested on every platform in `modes.rs`, with the modes a 4K, a 1440p and a 1080p monitor offer. `tests/display_cli.rs` covers the CLI surface without touching a display.
 
-`lum display`, `off` and `on` have been run by hand on an M1 Mac with a 2560x1440 monitor that had Crisp's file loaded. Installing the file needs a password and has not been run yet: on a monitor without the file, run `lum display on`, restart, then run it again. A restart after `off` has not been tried yet either. Neither have several monitors, a Retina monitor or the tray. The tray needs a desktop session, so it is checked by hand:
+`lum display status`, `off` and `on` have been run by hand on an M1 Mac with a 2560x1440 monitor that had Crisp's file loaded. Installing the file needs a password and has not been run yet: on a monitor without the file, run `lum display on`, restart, then run it again. A restart after `off` has not been tried yet either. Neither have several monitors, a Retina monitor or the tray. The tray needs a desktop session, so it is checked by hand:
 
 ```sh
 cargo run -- display off   # a monitor icon appears; its menu reads "HiDPI off: ..."

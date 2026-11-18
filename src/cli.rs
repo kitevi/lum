@@ -94,11 +94,9 @@ pub enum Commands {
         command: NetCommand,
     },
     /// HiDPI on and off, and sRGB color, for monitors that aren't Retina. (macOS)
-    ///
-    /// Without a command, shows whether HiDPI is on.
     Display {
         #[usage(subcommand)]
-        command: Option<DisplayCommand>,
+        command: DisplayCommand,
     },
 }
 
@@ -452,6 +450,8 @@ pub enum DisplayCommand {
     Off,
     /// The sRGB color profile, for monitors still on the one macOS made for them. Asks first.
     Srgb,
+    /// Show whether HiDPI is on for each monitor.
+    Status,
 }
 
 #[cfg(test)]
@@ -597,7 +597,7 @@ mod tests {
         assert!(matches!(
             cli.command,
             Commands::Display {
-                command: Some(DisplayCommand::On)
+                command: DisplayCommand::On
             }
         ));
     }
@@ -608,15 +608,20 @@ mod tests {
         assert!(matches!(
             cli.command,
             Commands::Display {
-                command: Some(DisplayCommand::Srgb)
+                command: DisplayCommand::Srgb
             }
         ));
     }
 
     #[test]
-    fn parses_display_without_a_command() {
-        let cli = parse(&["display"]);
-        assert!(matches!(cli.command, Commands::Display { command: None }));
+    fn parses_display_status() {
+        let cli = parse(&["display", "status"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Display {
+                command: DisplayCommand::Status
+            }
+        ));
     }
 
     #[test]

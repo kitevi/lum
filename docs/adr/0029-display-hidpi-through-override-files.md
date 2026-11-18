@@ -21,7 +21,7 @@ The HiDPI size worth having is the one closest to the panel's own, so things loo
 ## Consequences
 
 - No app has to stay installed or running for HiDPI. Crisp can go.
-- On Apple silicon `on` can't match the panel's own size exactly, so everything looks a little bigger than with HiDPI off: 0.6% on a 2560x1440 monitor and 0.8% on a 1920x1080 one. That is small enough to accept, and `lum display` shows it.
+- On Apple silicon `on` can't match the panel's own size exactly, so everything looks a little bigger than with HiDPI off: 0.6% on a 2560x1440 monitor and 0.8% on a 1920x1080 one. That is small enough to accept, and `lum display status` shows it.
 - After lum installs the file, macOS needs a restart or a replug before `on` can switch, since it reads the file only when the monitor connects.
 - Reinstalling or resetting macOS can drop `/Library/Displays`. Run `lum display on` again and restart.
 - Built-in screens and monitors Apple ships an override for are not touched.

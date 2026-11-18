@@ -290,11 +290,11 @@ Sharp text on monitors macOS doesn't treat as Retina, such as 27-inch 2560x1440 
 ```sh
 lum display on     # HiDPI at about the monitor's own size; the first time it asks for your password and a restart
 lum display off    # plain resolution until you restart or log out: least GPU work, for games
-lum display        # show which one is on
+lum display status # show which one is on
 lum display srgb   # the sRGB color profile where none was picked; asks first
 ```
 
-On Apple silicon, macOS won't do HiDPI at exactly the monitor's own size, so `on` uses the closest size under it: 2544x1431 on a 2560x1440 monitor and 1904x1071 on a 1920x1080 one. Everything looks 0.6% or 0.8% bigger than with HiDPI off, and `lum display` shows the difference.
+On Apple silicon, macOS won't do HiDPI at exactly the monitor's own size, so `on` uses the closest size under it: 2544x1431 on a 2560x1440 monitor and 1904x1071 on a 1920x1080 one. Everything looks 0.6% or 0.8% bigger than with HiDPI off, and `lum display status` shows the difference.
 
 `lum display srgb` gives the same monitors the sRGB color profile, unless one was picked for them in System Settings > Displays > Color profile. It asks before it changes each one.
 

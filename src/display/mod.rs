@@ -12,15 +12,15 @@ use anyhow::Result;
 
 use crate::cli::DisplayCommand;
 
-pub fn run(command: Option<DisplayCommand>) -> Result<()> {
+pub fn run(command: DisplayCommand) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
         use macos::HidpiState;
         match command {
-            None => macos::run(None),
-            Some(DisplayCommand::On) => macos::run(Some(HidpiState::On)),
-            Some(DisplayCommand::Off) => macos::run(Some(HidpiState::Off)),
-            Some(DisplayCommand::Srgb) => srgb::run(),
+            DisplayCommand::Status => macos::run(None),
+            DisplayCommand::On => macos::run(Some(HidpiState::On)),
+            DisplayCommand::Off => macos::run(Some(HidpiState::Off)),
+            DisplayCommand::Srgb => srgb::run(),
         }
     }
     #[cfg(not(target_os = "macos"))]

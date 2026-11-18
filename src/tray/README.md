@@ -14,7 +14,7 @@ lum's tray icon, shared by `lum radio`, `lum net game` and, on macOS, `lum displ
 
 ## Menu
 
-- The status lines are disabled items at the top: one for each monitor with HiDPI off, worded as `lum display` prints them, then one for game mode, `Game mode on for eth0 since 2026-11-12 20:00`. A separator divides them from the radio's items. The tooltip has a line for each state too: the station, `lum display: HiDPI off` and `lum net: game mode on`.
+- The status lines are disabled items at the top: one for each monitor with HiDPI off, worded as `lum display status` prints them, then one for game mode, `Game mode on for eth0 since 2026-11-12 20:00`. A separator divides them from the radio's items. The tooltip has a line for each state too: the station, `lum display: HiDPI off` and `lum net: game mode on`.
 - Lines are inserted and removed in place: muda carries every change to a `Menu` over to the menu on screen, and on Linux the icon and tooltip update that follows has the backend send the menu again.
 - Clicking the icon itself is not a portable gesture across tray hosts, which is why everything is a menu item. The status lines are information only: switching game mode back needs sudo, and sudo needs a terminal.
 
