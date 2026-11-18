@@ -83,10 +83,10 @@ pub enum Commands {
         #[usage(subcommand)]
         command: FontCommand,
     },
-    /// Set system volume to default or specified level.
+    /// Show, set or reset the system volume.
     Vol {
-        /// Volume level (0–100). Omit to reset to OS default.
-        volume: Option<u16>,
+        #[usage(subcommand)]
+        command: VolCommand,
     },
     /// Switch the wired connection between normal and game mode. (Linux and macOS)
     Net {
@@ -438,6 +438,19 @@ pub enum FontCommand {
         /// Font name, as `lum font list` shows it.
         font: String,
     },
+}
+
+#[derive(Debug, usage_rs::Subcommands)]
+pub enum VolCommand {
+    /// Set the volume back to lum's default: 17 on macOS, 25 elsewhere.
+    Reset,
+    /// Set the volume to a level from 0 to 100.
+    Set {
+        /// Volume level, 0–100.
+        level: u16,
+    },
+    /// Show the current volume.
+    Status,
 }
 
 // Only the macOS build reads the command; elsewhere `lum display` refuses to run.

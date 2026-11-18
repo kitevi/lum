@@ -1,5 +1,7 @@
 use anyhow::Result;
 
+use crate::cli::VolCommand;
+
 /// Returns the OS-specific default reset volume (0–100).
 pub(crate) const fn default_volume() -> u8 {
     #[cfg(target_os = "macos")]
@@ -16,22 +18,24 @@ pub(crate) const fn default_volume() -> u8 {
     }
 }
 
-pub struct VolArgs {
-    pub volume: Option<u16>,
-}
-
-pub fn run(args: VolArgs) -> Result<()> {
-    let target = match args.volume {
-        Some(v) => {
-            if v > 100 {
+pub fn run(command: VolCommand) -> Result<()> {
+    match command {
+        VolCommand::Status => {
+            let device = volumecontrol::AudioDevice::from_default()?;
+            println!("Volume: {}", device.get_vol()?);
+            Ok(())
+        }
+        VolCommand::Set { level } => {
+            if level > 100 {
                 anyhow::bail!("volume must be between 0 and 100");
             }
-            v as u8
+            set(level as u8, false)
         }
-        None => default_volume(),
-    };
-    let is_default = args.volume.is_none();
+        VolCommand::Reset => set(default_volume(), true),
+    }
+}
 
+fn set(target: u8, is_default: bool) -> Result<()> {
     let device = volumecontrol::AudioDevice::from_default()?;
     let previous = device.get_vol().ok();
 

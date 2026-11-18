@@ -65,7 +65,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Apps { command } => apps::run(command),
         Commands::Yt { command } => yt::run(command),
         Commands::Font { command } => font::run(command),
-        Commands::Vol { volume } => vol::run(vol::VolArgs { volume }),
+        Commands::Vol { command } => vol::run(command),
         Commands::Net { command } => net::run(command),
         Commands::Display { command } => display::run(command),
         Commands::StatusTray => tray::status::run(),
