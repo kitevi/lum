@@ -5,16 +5,15 @@
 ## CLI
 
 ```sh
-lum apps ls
 lum apps install <app> [--force]
+lum apps list
 lum apps status <app>
-lum apps update <app> [--force]
 lum apps sync [--dry-run]
-lum apps version <app>
 lum apps uninstall <app>
+lum apps update <app> [--force]
 ```
 
-`sync` is the all-apps operation: it installs missing apps, updates outdated ones and puts drifted settings back. `update` targets one app and reapplies its settings even when the app is up to date. There is no opt-in catalog behavior and no `--all` flag.
+`sync` is the all-apps operation: it installs missing apps, updates outdated ones and puts drifted settings back. `update` targets one app and reapplies its settings even when the app is up to date. There is no opt-in catalog behavior and no `--all` flag. `status` shows the installed version next to the latest release, which it looks up on GitHub.
 
 ## Language
 

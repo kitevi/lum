@@ -199,7 +199,7 @@ pub enum ToolsCommand {
     /// List managed tools and local state.
     #[usage(visible_alias = "ls")]
     List,
-    /// Show detailed status for one tool.
+    /// Show install details and the latest version for one tool.
     Status {
         /// Tool name, as `lum tools list` shows it.
         tool: String,
@@ -217,8 +217,8 @@ pub enum ToolsCommand {
         #[usage(long)]
         force: bool,
     },
-    /// Show installed and latest version for one tool.
-    Version {
+    /// Remove a tool lum installed.
+    Uninstall {
         /// Tool name, as `lum tools list` shows it.
         tool: String,
     },
@@ -237,7 +237,7 @@ pub enum AppsCommand {
     /// List apps, their install state and settings.
     #[usage(visible_alias = "ls")]
     List,
-    /// Show install details and settings for one app.
+    /// Show install details, the latest version and settings for one app.
     Status {
         /// App name, as `lum apps list` shows it.
         app: String,
@@ -254,11 +254,6 @@ pub enum AppsCommand {
     Sync {
         #[usage(long)]
         dry_run: bool,
-    },
-    /// Show installed and latest version for one app.
-    Version {
-        /// App name, as `lum apps list` shows it.
-        app: String,
     },
     /// Remove an app and its launcher; its settings and saves stay.
     Uninstall {

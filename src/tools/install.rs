@@ -72,6 +72,21 @@ pub(crate) fn install_artifact(
     Ok(stored.tools.remove(spec.name).unwrap())
 }
 
+/// Removes a managed tool's binary, if it is still there, and forgets the tool.
+pub(crate) fn uninstall(spec: &ToolSpec) -> Result<()> {
+    let mut stored = load_state()?;
+    if let Some(tool) = stored.tools.remove(spec.name) {
+        match fs::remove_file(&tool.path) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(error)
+                    .with_context(|| format!("failed to remove {}", tool.path.display()));
+            }
+            _ => {}
+        }
+    }
+    save_state(&stored)
+}
+
 fn materialize_binary(download: &Path, temp_dir: &Path, artifact: &Artifact) -> Result<PathBuf> {
     if artifact.archive_type == ArchiveType::Binary {
         return Ok(download.to_owned());

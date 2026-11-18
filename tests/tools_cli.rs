@@ -31,6 +31,17 @@ fn tools_rejects_unknown_tools() {
 }
 
 #[test]
+fn tools_uninstall_rejects_unknown_tools() {
+    let home = TempDir::new().unwrap();
+
+    lum_with_env(&home)
+        .args(["tools", "uninstall", "scc"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("unknown managed tool \"scc\""));
+}
+
+#[test]
 fn tools_sync_with_empty_catalog_does_nothing() {
     let home = TempDir::new().unwrap();
 

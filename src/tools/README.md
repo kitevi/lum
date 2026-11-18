@@ -6,14 +6,14 @@
 
 ```sh
 lum tools install <tool> [--force]
-lum tools ls
+lum tools list
 lum tools status <tool>
 lum tools sync [--dry-run]
+lum tools uninstall <tool>
 lum tools update <tool> [--force]
-lum tools version <tool>
 ```
 
-There is no opt-in catalog behavior and no `--all` flag. `sync` is the all-tools operation: it inspects every hardcoded tool, installs missing tools, updates outdated tools, and skips up-to-date tools. `update` targets one named tool only.
+There is no opt-in catalog behavior and no `--all` flag. `sync` is the all-tools operation: it inspects every hardcoded tool, installs missing tools, updates outdated tools, and skips up-to-date tools. `update` targets one named tool only. `status` shows the installed version next to the latest release, which it looks up on GitHub. `uninstall` removes a tool lum installed and forgets it; it refuses a binary lum does not manage.
 
 ## Storage
 

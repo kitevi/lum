@@ -24,7 +24,6 @@ pub fn run(command: AppsCommand) -> Result<()> {
         AppsCommand::Status { app } => status_cmd(&app),
         AppsCommand::Update { app, force } => update_cmd(&app, force),
         AppsCommand::Sync { dry_run } => sync_cmd(dry_run),
-        AppsCommand::Version { app } => version_cmd(&app),
         AppsCommand::Uninstall { app } => uninstall_cmd(&app),
     }
 }
@@ -86,6 +85,11 @@ fn status_cmd(app: &str) -> Result<()> {
                 "Installed version:",
                 status.stored_version.as_deref().unwrap_or("unknown"),
             );
+            let latest = match install::resolve_latest(spec, build) {
+                Ok(artifact) => artifact.version,
+                Err(error) => format!("unknown ({error:#})"),
+            };
+            field("Latest version:", &latest);
             if let Some(launcher) = launcher::path(spec, &build.package)? {
                 field("Launcher:", &launcher.display().to_string());
             }
@@ -246,19 +250,6 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
     println!(
         "\nSummary: {installed} installed, {updated} updated, {up_to_date} up to date, {configured} configured, {skipped} skipped"
     );
-    Ok(())
-}
-
-fn version_cmd(app: &str) -> Result<()> {
-    let spec = catalog::lookup_app(app)?;
-    let build = spec.require_build()?;
-    let status = state::local_status(spec, build)?;
-    let artifact = install::resolve_latest(spec, build)?;
-    println!(
-        "Installed: {}",
-        status.installed_version().unwrap_or("unknown")
-    );
-    println!("Latest:    {}", artifact.version);
     Ok(())
 }
 

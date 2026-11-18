@@ -17,7 +17,7 @@ pub fn run(command: ToolsCommand) -> Result<()> {
         ToolsCommand::Status { tool } => status_cmd(&tool),
         ToolsCommand::Sync { dry_run } => sync_cmd(dry_run),
         ToolsCommand::Update { tool, force } => update_cmd(&tool, force),
-        ToolsCommand::Version { tool } => version_cmd(&tool),
+        ToolsCommand::Uninstall { tool } => uninstall_cmd(&tool),
     }
 }
 
@@ -57,6 +57,11 @@ fn status_cmd(tool: &str) -> Result<()> {
         "Installed version: {}",
         status.effective_version().unwrap_or("unknown")
     );
+    let latest = match resolve_latest(spec) {
+        Ok(artifact) => artifact.version,
+        Err(error) => format!("unknown ({error:#})"),
+    };
+    println!("Latest version:    {latest}");
     Ok(())
 }
 
@@ -163,15 +168,14 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn version_cmd(tool: &str) -> Result<()> {
+fn uninstall_cmd(tool: &str) -> Result<()> {
     let spec = catalog::lookup_tool(tool)?;
     let status = state::local_status(spec)?;
-    let artifact = resolve_latest(spec)?;
-    println!(
-        "Installed: {}",
-        status.effective_version().unwrap_or("unknown")
-    );
-    println!("Latest:    {}", artifact.version);
+    if !status.managed {
+        anyhow::bail!("{} is not installed by lum", spec.name);
+    }
+    install::uninstall(spec)?;
+    println!("✓ Uninstalled {} from {}", spec.name, status.path.display());
     Ok(())
 }
 

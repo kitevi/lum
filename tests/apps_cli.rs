@@ -97,6 +97,14 @@ fn lum(home: &TempDir) -> Command {
     cmd
 }
 
+/// lum whose `status` takes the latest version from a fixture name instead of GitHub.
+fn lum_offline(home: &TempDir) -> Command {
+    let mut cmd = lum(home);
+    cmd.env("LUM_APPS_TEST_ARTIFACT_MGBA", "mgba.AppImage")
+        .env("LUM_APPS_TEST_ARTIFACT_SNES9X", "snes9x.AppImage");
+    cmd
+}
+
 fn lum_with_fixture(home: &TempDir, appimage: &Path) -> Command {
     let mut cmd = lum(home);
     cmd.env("LUM_APPS_TEST_ARTIFACT_MGBA", appimage);
@@ -195,7 +203,7 @@ fn ls_lists_the_catalog_with_settings_state() {
 fn status_reports_a_missing_app_and_its_settings() {
     let home = TempDir::new().unwrap();
 
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "mgba"])
         .assert()
         .success()
@@ -217,7 +225,7 @@ fn status_reports_a_missing_app_and_its_settings() {
 fn status_rejects_unknown_apps_and_lists_available() {
     let home = TempDir::new().unwrap();
 
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "wat"])
         .assert()
         .failure()
@@ -229,7 +237,7 @@ fn status_rejects_unknown_apps_and_lists_available() {
 fn apps_install_into_the_xdg_data_folder_by_default() {
     let home = TempDir::new().unwrap();
 
-    lum(&home)
+    lum_offline(&home)
         .env_remove("LUM_APPS_DIR")
         .args(["apps", "status", "mgba"])
         .assert()
@@ -289,7 +297,7 @@ fn install_unpacks_the_appimage_and_adds_a_desktop_entry() {
         .collect();
     assert_eq!(names, ["mgba"]);
 
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "mgba"])
         .assert()
         .success()
@@ -436,7 +444,7 @@ fn update_replaces_an_older_install() {
 
     assert!(!app.join("marker").exists());
     assert!(app.join("usr/bin/mgba-qt").exists());
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "mgba"])
         .assert()
         .success()
@@ -569,7 +577,7 @@ fn uninstall_removes_the_app_and_launcher_but_keeps_settings() {
     assert!(!app_dir(&home).exists());
     assert!(!desktop_entry(&home).exists());
     assert!(config_file(&home).exists());
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "mgba"])
         .assert()
         .success()
@@ -588,16 +596,15 @@ fn uninstall_requires_an_install() {
 }
 
 #[test]
-fn version_shows_installed_and_latest() {
+fn status_shows_installed_and_latest_versions() {
     let home = TempDir::new().unwrap();
-    let appimage = write_fixture_appimage(&home);
 
-    lum_with_fixture(&home, &appimage)
-        .args(["apps", "version", "mgba"])
+    lum_offline(&home)
+        .args(["apps", "status", "mgba"])
         .assert()
         .success()
-        .stdout(contains("Installed: unknown"))
-        .stdout(contains("Latest:    test"));
+        .stdout(contains("Installed version: unknown"))
+        .stdout(contains("Latest version:    test"));
 }
 
 #[test]
@@ -637,7 +644,7 @@ fn snes9x_installs_its_appimage_with_its_own_desktop_entry() {
         "{entry}"
     );
 
-    lum(&home)
+    lum_offline(&home)
         .args(["apps", "status", "snes9x"])
         .assert()
         .success()

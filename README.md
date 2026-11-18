@@ -191,10 +191,9 @@ Where things go:
 Common commands:
 
 ```sh
-lum apps ls
+lum apps list
 lum apps install mgba
-lum apps status snes9x
-lum apps version mgba
+lum apps status snes9x        # installed and latest version, settings
 lum apps update mgba
 lum apps sync
 lum apps sync --dry-run
