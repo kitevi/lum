@@ -1,6 +1,6 @@
 # Tools Subcommand
 
-`lum tools` manages a hardcoded catalog of developer tools installed into the same directory printed by `lum env path`.
+`lum tools` manages a hardcoded catalog of developer tools installed into the same directory printed by `lum env bin-dir`.
 
 ## CLI Shape
 
@@ -20,7 +20,7 @@ There is no opt-in catalog behavior and no `--all` flag. `sync` is the all-tools
 Use lum's centralized platform directory policy (`directories::ProjectDirs::from("dev", "ppowo", "lum")`):
 
 - state: `config_dir()/tools-state.json`
-- entrypoints/install path: `data_dir()/bin`, matching `lum env path`
+- entrypoints/install path: `data_dir()/bin`, matching `lum env bin-dir`
 
 No vex state is read or migrated. If moving from vex, reinstall or sync tools manually with `lum tools`.
 

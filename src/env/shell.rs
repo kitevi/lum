@@ -155,7 +155,8 @@ impl Default for EnvShell {
         if cfg!(windows) {
             Self::Powershell
         } else {
-            Self::Posix
+            // zsh gets the same code: the POSIX init picks its completion at run time.
+            Self::Bash
         }
     }
 }

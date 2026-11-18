@@ -15,17 +15,11 @@ pub fn run(command: EnvCommand) -> Result<()> {
             value,
         } => set(&alias, &value, shell.unwrap_or_default()),
         EnvCommand::Unset { shell, alias } => unset(&alias, shell.unwrap_or_default()),
-        EnvCommand::Path => {
+        EnvCommand::BinDir => {
             println!("{}", state::bin_dir()?.display());
             Ok(())
         }
         EnvCommand::List => list(),
-        EnvCommand::Aliases => {
-            for (alias, variable) in catalog::ALIASES {
-                println!("{alias:<11} → {variable}");
-            }
-            Ok(())
-        }
     }
 }
 
@@ -36,7 +30,7 @@ fn init(shell: EnvShell) -> Result<()> {
 
     let stored = state::read_state()?;
     match shell {
-        EnvShell::Posix => shell::emit_posix_init(&stored, &bin),
+        EnvShell::Bash | EnvShell::Zsh => shell::emit_posix_init(&stored, &bin),
         EnvShell::Fish => shell::emit_fish_init(&stored, &bin),
         EnvShell::Powershell => shell::emit_powershell_init(&stored, &bin),
     }
@@ -50,7 +44,9 @@ fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
     stored.insert(alias.to_owned(), value.to_owned());
     state::write_state(&stored)?;
     match shell {
-        EnvShell::Posix => println!("export {variable}={}", shell::shell_quote(value)),
+        EnvShell::Bash | EnvShell::Zsh => {
+            println!("export {variable}={}", shell::shell_quote(value))
+        }
         EnvShell::Fish => println!("set -gx {variable} {}", shell::fish_quote(value)),
         EnvShell::Powershell => println!("$env:{variable} = {}", shell::powershell_quote(value)),
     }
@@ -65,7 +61,7 @@ fn unset(alias: &str, shell: EnvShell) -> Result<()> {
     stored.remove(alias);
     state::write_state(&stored)?;
     match shell {
-        EnvShell::Posix => println!("unset {variable}"),
+        EnvShell::Bash | EnvShell::Zsh => println!("unset {variable}"),
         EnvShell::Fish => println!("set -e {variable}"),
         EnvShell::Powershell => {
             println!("Remove-Item Env:{variable} -ErrorAction SilentlyContinue")

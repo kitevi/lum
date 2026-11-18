@@ -145,7 +145,10 @@ pub enum BackupCommand {
 
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
 pub enum EnvShell {
-    Posix,
+    /// The same POSIX code as zsh.
+    Bash,
+    /// The same POSIX code as bash.
+    Zsh,
     Fish,
     Powershell,
 }
@@ -154,13 +157,13 @@ pub enum EnvShell {
 pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
     Init {
-        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
+        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
     },
     /// Set a managed environment variable alias.
     Set {
-        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
+        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
@@ -170,7 +173,7 @@ pub enum EnvCommand {
     },
     /// Unset a managed environment variable alias.
     Unset {
-        /// Shell to write code for. Defaults to PowerShell on Windows and POSIX code elsewhere.
+        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
@@ -179,10 +182,8 @@ pub enum EnvCommand {
     /// Show managed aliases and forced defaults.
     #[usage(visible_alias = "ls")]
     List,
-    /// Show alias to environment variable mappings.
-    Aliases,
-    /// Print lum's environment bin directory.
-    Path,
+    /// Print the directory lum installs tools into, which `init` puts on PATH.
+    BinDir,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]

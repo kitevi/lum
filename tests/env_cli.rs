@@ -64,7 +64,7 @@ fn env_rejects_unknown_aliases() {
 }
 
 #[test]
-fn env_set_opencode_emits_export_and_aliases_lists_it() {
+fn env_set_opencode_emits_export_and_list_shows_it() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
@@ -74,10 +74,12 @@ fn env_set_opencode_emits_export_and_aliases_lists_it() {
         .stdout("export OPENCODE_API_KEY='oc-key'\n");
 
     lum_with_env(&home)
-        .args(["env", "aliases"])
+        .args(["env", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("opencode    → OPENCODE_API_KEY"));
+        .stdout(predicates::str::contains(
+            "  opencode    OPENCODE_API_KEY         = ********",
+        ));
 
     lum_with_env(&home)
         .args(["env", "init"])
@@ -99,16 +101,16 @@ fn env_set_opendesign_resolves_to_api_key_variable() {
         .stdout("export OPENDESIGN_API_KEY='od-key'\n");
 
     lum_with_env(&home)
-        .args(["env", "aliases"])
+        .args(["env", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains(
-            "opendesign  → OPENDESIGN_API_KEY",
+            "  opendesign  OPENDESIGN_API_KEY       = ********",
         ));
 }
 
 #[test]
-fn env_set_deploy_emits_export_and_aliases_lists_it() {
+fn env_set_deploy_emits_export_and_list_shows_it() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
@@ -118,14 +120,16 @@ fn env_set_deploy_emits_export_and_aliases_lists_it() {
         .stdout("export DEPLOY_API_KEY='dp-test'\n");
 
     lum_with_env(&home)
-        .args(["env", "aliases"])
+        .args(["env", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("deploy      → DEPLOY_API_KEY"));
+        .stdout(predicates::str::contains(
+            "  deploy      DEPLOY_API_KEY           = ********",
+        ));
 }
 
 #[test]
-fn env_set_keenable_emits_export_and_aliases_lists_it() {
+fn env_set_keenable_emits_export_and_list_shows_it() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
@@ -135,10 +139,12 @@ fn env_set_keenable_emits_export_and_aliases_lists_it() {
         .stdout("export KEENABLE_API_KEY='kn-test'\n");
 
     lum_with_env(&home)
-        .args(["env", "aliases"])
+        .args(["env", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("keenable    → KEENABLE_API_KEY"));
+        .stdout(predicates::str::contains(
+            "  keenable    KEENABLE_API_KEY         = ********",
+        ));
 }
 
 #[test]

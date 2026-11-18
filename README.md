@@ -102,13 +102,13 @@ Run this once in your shell startup file.
 For bash, add this to `~/.bashrc`:
 
 ```sh
-eval "$(lum env init --shell posix)"
+eval "$(lum env init --shell bash)"
 ```
 
 For zsh, add this to `~/.zshrc`:
 
 ```sh
-eval "$(lum env init --shell posix)"
+eval "$(lum env init --shell zsh)"
 ```
 
 For fish, add this to `~/.config/fish/config.fish`:
@@ -158,11 +158,10 @@ Available aliases:
 Examples:
 
 ```sh
-lum env aliases
-lum env set openrouter sk-or-...
 lum env list
+lum env set openrouter sk-or-...
 lum env unset openrouter
-lum env path
+lum env bin-dir
 ```
 
 After setting or unsetting a value, restart your terminal or re-run your shell init command so the environment updates in the current shell.

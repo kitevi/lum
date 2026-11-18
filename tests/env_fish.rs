@@ -160,7 +160,7 @@ fn fish_wrapper_prints_foreign_shell_output_without_evaluating() {
     let script = format!(
         r#"command lum env set --shell fish openrouter sk-test > /dev/null
 command lum env init --shell fish | source
-lum env unset --shell posix openrouter
+lum env unset --shell bash openrouter
 printf '%s' "$OPENROUTER_API_KEY" > "{actual}"
 "#,
         actual = actual.display()
@@ -174,7 +174,7 @@ printf '%s' "$OPENROUTER_API_KEY" > "{actual}"
     );
     assert!(
         stdout.contains("unset OPENROUTER_API_KEY"),
-        "posix output not printed through (stdout={stdout:?})"
+        "bash output not printed through (stdout={stdout:?})"
     );
     assert_eq!(
         fs::read(&actual).unwrap(),
@@ -215,7 +215,7 @@ fn fish_init_is_idempotent_on_path() {
     let fenv = fish_env();
     let script = r#"command lum env init --shell fish | source
 command lum env init --shell fish | source
-set -l bindir (command lum env path)
+set -l bindir (command lum env bin-dir)
 set -l n 0
 for p in $PATH
   if test "$p" = "$bindir"
@@ -278,7 +278,7 @@ fn fish_wrapper_respects_option_terminator_and_last_shell() {
         return;
     }
     let fenv = fish_env();
-    for value in ["--shell=posix", "--help", "-h"] {
+    for value in ["--shell=bash", "--help", "-h"] {
         let script = "command lum env init --shell fish | source\nlum env set openrouter -- $LUM_TEST_VALUE\nor exit $status\nprintf '%s' \"$OPENROUTER_API_KEY\"";
         let out = run_fish(&fenv, script, &[("LUM_TEST_VALUE", value)]);
         assert!(

@@ -9,8 +9,7 @@ eval "$(lum env init)"
 lum env set openrouter sk-or-v1-xxxx
 lum env unset openrouter
 lum env list
-lum env aliases
-lum env path
+lum env bin-dir
 ```
 
 `lum env init` emits shell code. On Unix shells, put `eval "$(lum env init)"` in `.bashrc`, `.zshrc`, or another POSIX-ish shell startup file. The emitted wrapper makes `lum env set` and `lum env unset` affect the current shell immediately without re-sourcing the startup file.
@@ -27,7 +26,7 @@ Invoke-Expression (& lum env init)
 
 For fish, add `lum env init --shell fish | source` to `~/.config/fish/config.fish`.
 
-For testing or explicit selection, `lum env init`, `lum env set`, and `lum env unset` accept `--shell posix`, `--shell fish`, or `--shell powershell`. The default is PowerShell on Windows and POSIX elsewhere.
+For testing or explicit selection, `lum env init`, `lum env set`, and `lum env unset` accept `--shell bash`, `--shell zsh`, `--shell fish`, or `--shell powershell`. bash and zsh get the same POSIX code. The default is `powershell` on Windows and `bash` elsewhere.
 
 `lum __completions <shell>` is a hidden internal command backed by `usage-rs`; it supports `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
 
@@ -38,7 +37,7 @@ Use lum's centralized platform directory policy (`directories::ProjectDirs::from
 - state: `config_dir()/env-state.json`
 - bin directory: `data_dir()/bin`
 
-`lum env path` only prints the bin directory. `lum env init` creates it and prepends it to `PATH` with deduplication.
+`lum env bin-dir` only prints the bin directory. `lum env init` creates it and prepends it to `PATH` with deduplication.
 
 No vex state is read or migrated. If moving from vex, set values again manually with `lum env set`.
 
