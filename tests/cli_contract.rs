@@ -38,6 +38,32 @@ fn completions_rejects_unsupported_shell() {
 }
 
 #[test]
+fn every_command_declares_its_effect() {
+    let output = Command::cargo_bin("lum")
+        .unwrap()
+        .arg("__usage_spec__")
+        .output()
+        .unwrap();
+    let spec: usage_parser::Spec = String::from_utf8(output.stdout).unwrap().parse().unwrap();
+    let mut missing = Vec::new();
+    without_effect(&spec.cmd, "lum", &mut missing);
+    assert!(
+        missing.is_empty(),
+        "commands without an effect: {missing:?}"
+    );
+}
+
+/// The commands under `cmd` that run something but do not say what it does to the world.
+fn without_effect(cmd: &usage_parser::SpecCommand, path: &str, missing: &mut Vec<String>) {
+    if cmd.subcommands.is_empty() && cmd.effect.is_none() {
+        missing.push(path.to_owned());
+    }
+    for (name, sub) in &cmd.subcommands {
+        without_effect(sub, &format!("{path} {name}"), missing);
+    }
+}
+
+#[test]
 fn usage_spec_endpoint_emits_kdl() {
     Command::cargo_bin("lum")
         .unwrap()

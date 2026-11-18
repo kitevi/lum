@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use super::ensure_git_on_path;
 
 #[derive(Debug, usage_rs::Args, Clone)]
+#[usage(effect = "read")]
 pub struct ScanArgs {
     /// Directory to scan. Defaults to the current directory. By default, contacts upstream remotes.
     pub path: Option<String>,

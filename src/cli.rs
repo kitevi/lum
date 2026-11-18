@@ -28,19 +28,19 @@ pub struct Cli {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum Commands {
     /// Generate shell completions.
-    #[usage(name = "__completions", hide)]
+    #[usage(name = "__completions", hide, effect = "read")]
     Completions {
         #[usage(value_enum)]
         shell: CompletionShell,
     },
     /// Internal radio station loop runner.
-    #[usage(name = "__radio_direct_runner", hide)]
+    #[usage(name = "__radio_direct_runner", hide, effect = "write")]
     RadioDirectRunner { code: String },
     /// Internal status tray, shown while `lum display off` or `lum net on` is in force.
-    #[usage(name = "__status_tray", hide)]
+    #[usage(name = "__status_tray", hide, effect = "read")]
     StatusTray,
     /// Internal Git credential helper.
-    #[usage(name = "__git_credential", hide)]
+    #[usage(name = "__git_credential", hide, effect = "read")]
     GitCredential { route_id: String, operation: String },
     /// Listen to internet radio stations.
     Radio {
@@ -130,30 +130,37 @@ impl From<CompletionShell> for usage_rs::complete::Shell {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum RadioCommand {
     /// List the stations.
+    #[usage(effect = "read")]
     List,
     /// Play a station in the background, in place of the one playing.
+    #[usage(effect = "write")]
     Play {
         /// Station code, as `lum radio list` shows it.
         #[usage(complete = complete::stations)]
         station: String,
     },
     /// Play a random station, never the one playing.
+    #[usage(effect = "write")]
     Random,
     /// Show whether a station is playing, paused or stopped.
+    #[usage(effect = "read")]
     Status,
     /// Stop playback and remove the tray icon.
+    #[usage(effect = "write")]
     Stop,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum BackupCommand {
     /// Archive a target, upload it and print the code that restores it.
+    #[usage(effect = "write")]
     Create {
         /// What to back up.
         #[usage(value_enum)]
         target: BackupTargetName,
     },
     /// Download a backup and put it in place of the target, keeping the old one aside.
+    #[usage(effect = "destructive")]
     Restore {
         /// What to restore.
         #[usage(value_enum)]
@@ -185,12 +192,14 @@ pub enum EnvShell {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
+    #[usage(effect = "read")]
     Init {
         /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
     },
     /// Set a managed environment variable alias.
+    #[usage(effect = "write")]
     Set {
         /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
@@ -202,6 +211,7 @@ pub enum EnvCommand {
         value: String,
     },
     /// Unset a managed environment variable alias.
+    #[usage(effect = "destructive")]
     Unset {
         /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
@@ -211,14 +221,17 @@ pub enum EnvCommand {
         alias: String,
     },
     /// Show managed aliases and forced defaults.
+    #[usage(effect = "read")]
     List,
     /// Print the directory lum installs tools into, which `init` puts on PATH.
+    #[usage(effect = "read")]
     BinDir,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum ToolsCommand {
     /// Install a managed tool.
+    #[usage(effect = "write")]
     Install {
         /// Tool name, as `lum tools list` shows it.
         #[usage(complete = complete::tools)]
@@ -228,19 +241,23 @@ pub enum ToolsCommand {
         force: bool,
     },
     /// List managed tools and local state.
+    #[usage(effect = "read")]
     List,
     /// Show install details and the latest version for one tool.
+    #[usage(effect = "read")]
     Status {
         /// Tool name, as `lum tools list` shows it.
         #[usage(complete = complete::tools)]
         tool: String,
     },
     /// Install missing tools and update outdated tools.
+    #[usage(effect = "write")]
     Sync {
         #[usage(long)]
         dry_run: bool,
     },
     /// Update one managed tool.
+    #[usage(effect = "write")]
     Update {
         /// Tool name, as `lum tools list` shows it.
         #[usage(complete = complete::tools)]
@@ -250,6 +267,7 @@ pub enum ToolsCommand {
         force: bool,
     },
     /// Remove a tool lum installed.
+    #[usage(effect = "destructive")]
     Uninstall {
         /// Tool name, as `lum tools list` shows it.
         #[usage(complete = complete::tools)]
@@ -260,6 +278,7 @@ pub enum ToolsCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum AppsCommand {
     /// Install an app and apply its settings.
+    #[usage(effect = "write")]
     Install {
         /// App name, as `lum apps list` shows it.
         #[usage(complete = complete::apps)]
@@ -269,14 +288,17 @@ pub enum AppsCommand {
         force: bool,
     },
     /// List apps, their install state and settings.
+    #[usage(effect = "read")]
     List,
     /// Show install details, the latest version and settings for one app.
+    #[usage(effect = "read")]
     Status {
         /// App name, as `lum apps list` shows it.
         #[usage(complete = complete::apps)]
         app: String,
     },
     /// Update one app and reapply its settings.
+    #[usage(effect = "write")]
     Update {
         /// App name, as `lum apps list` shows it.
         #[usage(complete = complete::apps)]
@@ -286,11 +308,13 @@ pub enum AppsCommand {
         force: bool,
     },
     /// Install missing apps, update outdated ones and reapply drifted settings.
+    #[usage(effect = "write")]
     Sync {
         #[usage(long)]
         dry_run: bool,
     },
     /// Remove an app and its launcher; its settings and saves stay.
+    #[usage(effect = "destructive")]
     Uninstall {
         /// App name, as `lum apps list` shows it.
         #[usage(complete = complete::apps)]
@@ -312,48 +336,62 @@ pub enum ReposCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum GitIdCommand {
     /// Print the path to the git identity config file.
+    #[usage(effect = "read")]
     ConfigPath,
     /// Create a sample git identity config file if none exists.
+    #[usage(effect = "write")]
     Init,
     /// Synchronize the machine with the git identity config.
+    #[usage(effect = "write")]
     Sync,
     /// Show status for all configured git identities.
+    #[usage(effect = "read")]
     Status,
     /// Show which git identity applies to the current directory.
+    #[usage(effect = "read")]
     Where,
     /// Show detailed information about one git identity.
+    #[usage(effect = "read")]
     Info {
         /// Identity name from the git-id config.
         #[usage(complete = complete::identities)]
         identity: String,
     },
     /// Print an identity public key to stdout.
+    #[usage(effect = "read")]
     Pubkey {
         /// Identity name from the git-id config.
         #[usage(complete = complete::identities)]
         identity: String,
     },
     /// Show files and folders managed by git-id.
+    #[usage(effect = "read")]
     Files,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum MirrorCommand {
     /// Print the path to the mirror config file.
+    #[usage(effect = "read")]
     ConfigPath,
     /// Print the path to the mirror directory.
+    #[usage(effect = "read")]
     Dir,
     /// Create a sample mirror config file if none exists.
+    #[usage(effect = "write")]
     Init,
     /// List configured mirror repositories.
+    #[usage(effect = "read")]
     List,
     /// Clone or update all configured mirror repositories.
+    #[usage(effect = "write")]
     Sync {
         /// Maximum concurrent git operations.
         #[usage(short = 'j', long, default = "4")]
         jobs: usize,
     },
     /// Check if local mirrors are up to date with their remotes.
+    #[usage(effect = "read")]
     Status {
         /// Maximum concurrent git operations.
         #[usage(short = 'j', long, default = "4")]
@@ -363,6 +401,7 @@ pub enum MirrorCommand {
         offline: bool,
     },
     /// Watch mirror repos for upstream changes and send desktop notifications.
+    #[usage(effect = "read")]
     Watch {
         /// Tag to filter repos by. Omit to see guidance.
         #[usage(complete = complete::mirror_tags)]
@@ -375,12 +414,14 @@ pub enum MirrorCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum YtCommand {
     /// Download audio from YouTube URL(s).
+    #[usage(effect = "write")]
     Audio {
         /// YouTube URL(s) to download.
         #[usage(required = true)]
         urls: Vec<String>,
     },
     /// Download video from YouTube URL(s).
+    #[usage(effect = "write")]
     Video {
         /// Maximum video height (default: 1080).
         #[usage(long)]
@@ -390,12 +431,14 @@ pub enum YtCommand {
         urls: Vec<String>,
     },
     /// Download an album or playlist from YouTube URL(s).
+    #[usage(effect = "write")]
     Album {
         /// YouTube URL(s) to download.
         #[usage(required = true)]
         urls: Vec<String>,
     },
     /// Print channel RSS feed URL(s) for YouTube video or channel URL(s).
+    #[usage(effect = "read")]
     Rss {
         /// Print bare ID(s) instead of feed URL(s).
         ///
@@ -414,6 +457,7 @@ pub enum YtCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum NetCommand {
     /// Force 100 Mb/s and shape downloads. Given a command, run it and switch back when it exits.
+    #[usage(effect = "write")]
     On {
         /// Wired interface to use instead of detecting it.
         #[usage(long, complete = complete::wired_interfaces)]
@@ -427,10 +471,13 @@ pub enum NetCommand {
         command: Vec<String>,
     },
     /// Restore automatic link speed and remove download shaping.
+    #[usage(effect = "write")]
     Off,
     /// Show whether shaping is on, and the wired interfaces.
+    #[usage(effect = "read")]
     Status,
     /// Measure latency idle and under load, and count receive errors.
+    #[usage(effect = "read")]
     Test {
         /// Wired interface to use instead of detecting it.
         #[usage(long, complete = complete::wired_interfaces)]
@@ -444,8 +491,10 @@ pub enum NetCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum FontCommand {
     /// List managed fonts and local state.
+    #[usage(effect = "read")]
     List,
     /// Install a managed font.
+    #[usage(effect = "write")]
     Install {
         /// Font name, as `lum font list` shows it.
         #[usage(complete = complete::fonts)]
@@ -455,12 +504,14 @@ pub enum FontCommand {
         force: bool,
     },
     /// Show where a font installs and whether it is installed.
+    #[usage(effect = "read")]
     Status {
         /// Font name, as `lum font list` shows it.
         #[usage(complete = complete::fonts)]
         font: String,
     },
     /// Uninstall a managed font.
+    #[usage(effect = "destructive")]
     Uninstall {
         /// Font name, as `lum font list` shows it.
         #[usage(complete = complete::fonts)]
@@ -471,13 +522,16 @@ pub enum FontCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum VolCommand {
     /// Set the volume back to lum's default: 17 on macOS, 25 elsewhere.
+    #[usage(effect = "write")]
     Reset,
     /// Set the volume to a level from 0 to 100.
+    #[usage(effect = "write")]
     Set {
         /// Volume level, 0–100.
         level: u16,
     },
     /// Show the current volume.
+    #[usage(effect = "read")]
     Status,
 }
 
@@ -486,12 +540,16 @@ pub enum VolCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum DisplayCommand {
     /// Sharp HiDPI at about the monitor's own size.
+    #[usage(effect = "write")]
     On,
     /// The monitor's plain resolution until you restart or log out: least GPU work, for games.
+    #[usage(effect = "write")]
     Off,
     /// The sRGB color profile, for monitors still on the one macOS made for them. Asks first.
+    #[usage(effect = "write")]
     Srgb,
     /// Show whether HiDPI is on for each monitor.
+    #[usage(effect = "read")]
     Status,
 }
 
