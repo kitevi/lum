@@ -1775,7 +1775,7 @@ fn pubkey_prints_only_the_key_and_paths_lists_the_files_sync_writes() {
         .success()
         .stdout(public_key);
     lum_with_home(&home)
-        .args(["git-id", "paths"])
+        .args(["git-id", "files"])
         .assert()
         .success()
         .stdout(predicates::str::contains(".gitconfig"))

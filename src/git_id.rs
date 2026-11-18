@@ -41,7 +41,7 @@ pub fn run(command: GitIdCommand) -> Result<()> {
         GitIdCommand::Status => status(),
         GitIdCommand::Info { identity } => info(&identity),
         GitIdCommand::Pubkey { identity } => pubkey(&identity),
-        GitIdCommand::Paths => paths(),
+        GitIdCommand::Files => files(),
     }
 }
 
@@ -438,7 +438,7 @@ fn pubkey(name: &str) -> Result<()> {
     Ok(())
 }
 
-fn paths() -> Result<()> {
+fn files() -> Result<()> {
     let identities = if config_path()?.exists() {
         load_config()?
     } else {

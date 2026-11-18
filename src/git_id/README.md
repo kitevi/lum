@@ -12,7 +12,7 @@ lum git-id status
 lum git-id where
 lum git-id info <identity>
 lum git-id pubkey <identity>
-lum git-id paths
+lum git-id files
 ```
 
 ## Config

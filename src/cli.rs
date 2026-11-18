@@ -310,7 +310,7 @@ pub enum GitIdCommand {
         identity: String,
     },
     /// Show files and folders managed by git-id.
-    Paths,
+    Files,
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
