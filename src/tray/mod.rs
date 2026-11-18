@@ -125,19 +125,22 @@ fn tray_image(look: Look, dark: Option<bool>) -> Result<(Icon, Ink)> {
     Ok((icon, ink))
 }
 
-/// Puts the icon on the builder, as a template image when it is one.
+/// Puts the icon on the builder, as a template image when it is one. tray-icon has template
+/// images on macOS only, which is also the only place [`ink`] picks one.
 fn with_icon(builder: TrayIconBuilder, (icon, ink): (Icon, Ink)) -> TrayIconBuilder {
     match ink {
+        #[cfg(target_os = "macos")]
         Ink::Template => builder.with_icon_templated(icon),
-        Ink::Colour | Ink::MenuBar { .. } => builder.with_icon(icon),
+        _ => builder.with_icon(icon),
     }
 }
 
 /// Swaps the shown icon, with the same template handling as [`with_icon`].
 fn set_icon(tray: &TrayIcon, (icon, ink): (Icon, Ink)) -> tray_icon::Result<()> {
     match ink {
+        #[cfg(target_os = "macos")]
         Ink::Template => tray.set_icon_templated(Some(icon)),
-        Ink::Colour | Ink::MenuBar { .. } => tray.set_icon(Some(icon)),
+        _ => tray.set_icon(Some(icon)),
     }
 }
 
