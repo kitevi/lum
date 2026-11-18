@@ -35,6 +35,6 @@ Resolving a YouTube link to its channel RSS feed was a repeated manual workflow:
 ## Consequences
 
 - `src/yt/rss.rs` holds the classification, the ID check, the feed builders and the yt-dlp call, and `src/yt/mod.rs` dispatches to it. Nothing is downloaded, so ffmpeg is not needed.
-- There is no new dependency, and the same yt-dlp call works on Linux, macOS and Windows. `aud`, `vid` and `alb` are untouched.
+- There is no new dependency, and the same yt-dlp call works on Linux, macOS and Windows. `audio`, `video` and `album` are untouched.
 - Unit tests cover the classification, the ID check, the `UULF` transform and the dedupe and multi-owner logic. `tests/yt_cli.rs` runs the command against a fake yt-dlp, including that a playlist never reaches it and that the run stops at the first failure. A live test that fetches both feeds is ignored by default.
 - Out of scope: reading feed contents, polling, OPML, playlist feeds, clipboard or `--open` output, and URLs on stdin.

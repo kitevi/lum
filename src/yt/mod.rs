@@ -13,18 +13,18 @@ pub fn run(command: YtCommand) -> Result<()> {
     let yt_dlp = deps::resolve_yt_dlp()?;
 
     match command {
-        YtCommand::Aud { urls } => {
+        YtCommand::Audio { urls } => {
             let args = args::audio_args();
             let dest_dir = output_dirs::audio_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
-        YtCommand::Vid { height, urls } => {
+        YtCommand::Video { height, urls } => {
             check_ffmpeg()?;
             let args = args::video_args(height);
             let dest_dir = output_dirs::video_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
-        YtCommand::Alb { urls } => {
+        YtCommand::Album { urls } => {
             let args = args::album_args(&urls);
             let dest_dir = output_dirs::audio_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)

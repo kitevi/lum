@@ -128,11 +128,11 @@ fn provisioned_ffmpeg_path(home: &TempDir) -> std::path::PathBuf {
 }
 
 #[test]
-fn yt_aud_auto_provisions_yt_dlp_when_missing() {
+fn yt_audio_auto_provisions_yt_dlp_when_missing() {
     let home = TempDir::new().unwrap();
 
     lum_with_fake_ffmpeg_and_ytdlp_artifact(&home)
-        .args(["yt", "aud", "https://example.com/video"])
+        .args(["yt", "audio", "https://example.com/video"])
         .assert()
         .success();
 
@@ -153,11 +153,11 @@ fn yt_aud_auto_provisions_yt_dlp_when_missing() {
 }
 
 #[test]
-fn yt_vid_auto_provisions_ffmpeg_when_missing() {
+fn yt_video_auto_provisions_ffmpeg_when_missing() {
     let home = TempDir::new().unwrap();
 
     lum_with_fake_ytdlp_and_ffmpeg_artifact(&home)
-        .args(["yt", "vid", "https://example.com/video"])
+        .args(["yt", "video", "https://example.com/video"])
         .assert()
         .success();
 
@@ -178,11 +178,11 @@ fn yt_vid_auto_provisions_ffmpeg_when_missing() {
 }
 
 #[test]
-fn yt_vid_uses_ffmpeg_from_path_without_provisioning() {
+fn yt_video_uses_ffmpeg_from_path_without_provisioning() {
     let home = TempDir::new().unwrap();
 
     lum_with_fake_ytdlp_and_ffmpeg(&home)
-        .args(["yt", "vid", "https://example.com/video"])
+        .args(["yt", "video", "https://example.com/video"])
         .assert()
         .success();
 
@@ -196,13 +196,13 @@ fn yt_vid_uses_ffmpeg_from_path_without_provisioning() {
 }
 
 #[test]
-fn yt_vid_reuses_fresh_provisioned_ffmpeg() {
+fn yt_video_reuses_fresh_provisioned_ffmpeg() {
     let home = TempDir::new().unwrap();
     let recent_epoch_secs = 4_102_444_800; // 2100-01-01T00:00:00Z
     write_provisioned_ffmpeg(&home, "#!/bin/sh\nexit 0\n", recent_epoch_secs);
 
     lum_with_fake_ytdlp_and_ffmpeg_artifact(&home)
-        .args(["yt", "vid", "https://example.com/video"])
+        .args(["yt", "video", "https://example.com/video"])
         .assert()
         .success();
 
@@ -211,12 +211,12 @@ fn yt_vid_reuses_fresh_provisioned_ffmpeg() {
 }
 
 #[test]
-fn yt_vid_refreshes_stale_provisioned_ffmpeg() {
+fn yt_video_refreshes_stale_provisioned_ffmpeg() {
     let home = TempDir::new().unwrap();
     write_provisioned_ffmpeg(&home, "#!/bin/sh\nexit 1\n", 0);
 
     lum_with_fake_ytdlp_and_ffmpeg_artifact(&home)
-        .args(["yt", "vid", "https://example.com/video"])
+        .args(["yt", "video", "https://example.com/video"])
         .assert()
         .success();
 
@@ -225,33 +225,33 @@ fn yt_vid_refreshes_stale_provisioned_ffmpeg() {
 }
 
 #[test]
-fn yt_aud_requires_at_least_one_url() {
+fn yt_audio_requires_at_least_one_url() {
     let home = TempDir::new().unwrap();
 
     lum_with_empty_path(&home)
-        .args(["yt", "aud"])
+        .args(["yt", "audio"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("required"));
 }
 
 #[test]
-fn yt_vid_requires_at_least_one_url() {
+fn yt_video_requires_at_least_one_url() {
     let home = TempDir::new().unwrap();
 
     lum_with_empty_path(&home)
-        .args(["yt", "vid"])
+        .args(["yt", "video"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("required"));
 }
 
 #[test]
-fn yt_alb_requires_at_least_one_url() {
+fn yt_album_requires_at_least_one_url() {
     let home = TempDir::new().unwrap();
 
     lum_with_empty_path(&home)
-        .args(["yt", "alb"])
+        .args(["yt", "album"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("required"));
@@ -269,36 +269,42 @@ fn yt_rejects_unknown_subcommand() {
 }
 
 #[test]
-fn yt_aud_does_not_require_ffmpeg() {
+fn yt_audio_does_not_require_ffmpeg() {
     let home = TempDir::new().unwrap();
 
     // yt-dlp is available (fake), but ffmpeg is not. Audio should still run.
     lum_with_fake_ytdlp(&home)
-        .args(["yt", "aud", "https://example.com/video"])
+        .args(["yt", "audio", "https://example.com/video"])
         .assert()
         .success();
 }
 
 #[test]
-fn yt_vid_fails_when_ffmpeg_not_found() {
+fn yt_video_fails_when_ffmpeg_not_found() {
     let home = TempDir::new().unwrap();
 
     // yt-dlp is available (fake), but ffmpeg is not. Video needs ffmpeg for muxing.
     lum_with_fake_ytdlp(&home)
         .env("LUM_FFMPEG_DISABLE_AUTO_PROVISION", "1")
-        .args(["yt", "vid", "https://example.com/video"])
+        .args(["yt", "video", "https://example.com/video"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("ffmpeg"));
 }
 
 #[test]
-fn yt_vid_accepts_height_flag() {
+fn yt_video_accepts_height_flag() {
     let home = TempDir::new().unwrap();
 
     lum_with_fake_ytdlp(&home)
         .env("LUM_FFMPEG_DISABLE_AUTO_PROVISION", "1")
-        .args(["yt", "vid", "--height", "2160", "https://example.com/video"])
+        .args([
+            "yt",
+            "video",
+            "--height",
+            "2160",
+            "https://example.com/video",
+        ])
         .assert()
         .failure()
         // Should fail because ffmpeg missing, not because --height is invalid

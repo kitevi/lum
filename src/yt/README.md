@@ -5,9 +5,9 @@
 ## CLI Shape
 
 ```sh
-lum yt aud <URL...>             # Audio → ~/Music
-lum yt vid [--height N] <URL...> # Video → ~/Movies
-lum yt alb <URL...>             # Album/playlist → ~/Music
+lum yt audio <URL...>              # Audio → ~/Music
+lum yt video [--height N] <URL...> # Video → ~/Movies
+lum yt album <URL...>              # Album/playlist → ~/Music
 lum yt rss [--id-only] [--videos-only] <URL...>  # Channel RSS feed URL(s)
 ```
 
@@ -25,7 +25,7 @@ lum yt rss [--id-only] [--videos-only] <URL...>  # Channel RSS feed URL(s)
 
 ## Album folder naming
 
-`lum yt alb` builds the output folder from the album title. Bandcamp albums are prefixed with the artist (`Artist - Album`) because yt-dlp exposes the real artist per track (`album_artist`/`artist`). YouTube playlists keep the bare album title, because YouTube's per-entry `uploader` is the channel name, not the artist. Detection is by `bandcamp.com` in the URL (`has_bandcamp` in `args.rs`); if any URL is Bandcamp, the artist-prefixed template is used.
+`lum yt album` builds the output folder from the album title. Bandcamp albums are prefixed with the artist (`Artist - Album`) because yt-dlp exposes the real artist per track (`album_artist`/`artist`). YouTube playlists keep the bare album title, because YouTube's per-entry `uploader` is the channel name, not the artist. Detection is by `bandcamp.com` in the URL (`has_bandcamp` in `args.rs`); if any URL is Bandcamp, the artist-prefixed template is used.
 
 ## What We Dropped vs the Go Version
 

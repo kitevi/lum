@@ -350,13 +350,13 @@ pub enum MirrorCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum YtCommand {
     /// Download audio from YouTube URL(s).
-    Aud {
+    Audio {
         /// YouTube URL(s) to download.
         #[usage(required = true)]
         urls: Vec<String>,
     },
     /// Download video from YouTube URL(s).
-    Vid {
+    Video {
         /// Maximum video height (default: 1080).
         #[usage(long)]
         height: Option<u32>,
@@ -365,7 +365,7 @@ pub enum YtCommand {
         urls: Vec<String>,
     },
     /// Download an album or playlist from YouTube URL(s).
-    Alb {
+    Album {
         /// YouTube URL(s) to download.
         #[usage(required = true)]
         urls: Vec<String>,
