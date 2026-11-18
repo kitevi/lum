@@ -52,11 +52,11 @@ fn create_test_font_zip(dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 #[test]
-fn font_ls_lists_the_managed_catalog() {
+fn font_list_shows_the_managed_catalog() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "ls"])
+        .args(["font", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("dmca-sans-serif"))
@@ -64,13 +64,13 @@ fn font_ls_lists_the_managed_catalog() {
 }
 
 #[test]
-fn font_ls_shows_installed_for_present_font_dir() {
+fn font_list_shows_installed_for_present_font_dir() {
     let home = TempDir::new().unwrap();
     let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     std::fs::create_dir_all(&font_dir).unwrap();
 
     lum_with_env(&home)
-        .args(["font", "ls"])
+        .args(["font", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("installed"));
@@ -131,9 +131,9 @@ fn font_install_downloads_and_extracts_ttf_files() {
     assert!(!font_dir.join("readme.txt").exists());
     assert!(!font_dir.join("subdir").exists());
 
-    // Verify ls now shows "installed"
+    // Verify list now shows "installed"
     lum_with_env(&home)
-        .args(["font", "ls"])
+        .args(["font", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("installed"));
@@ -244,9 +244,9 @@ fn font_uninstall_removes_font_directory() {
     let font_dir = test_font_dir(&home).join("dmca-sans-serif");
     assert!(!font_dir.exists());
 
-    // ls should show "available" again
+    // list should show "available" again
     lum_with_env(&home)
-        .args(["font", "ls"])
+        .args(["font", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("available"));

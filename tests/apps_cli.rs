@@ -184,11 +184,11 @@ fn seed_managed_install(home: &TempDir, version: &str) -> PathBuf {
 }
 
 #[test]
-fn ls_lists_the_catalog_with_settings_state() {
+fn list_shows_the_catalog_with_settings_state() {
     let home = TempDir::new().unwrap();
 
     lum(&home)
-        .args(["apps", "ls"])
+        .args(["apps", "list"])
         .assert()
         .success()
         .stdout(contains("mgba"))

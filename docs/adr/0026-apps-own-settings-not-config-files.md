@@ -14,7 +14,7 @@ Some apps cannot be configured through a file at all: OpenEmu keeps its preferen
 
 - An app may list **owned settings**: single INI keys (section, key, value) in the app's own config file, at the path the app itself reads on each OS. lum never owns a whole file, and apps whose configuration is not a plain file get no settings.
 - Values are hardcoded in the catalog, like env aliases and the tools catalog, so one lum binary configures every machine the same way.
-- `install` and `update` apply owned settings after installing; `sync` also puts back **drift**, an owned key whose value is missing or different. `status` and `ls` show drift. Drift is read from the file each time; no settings state is stored.
+- `install` and `update` apply owned settings after installing; `sync` also puts back **drift**, an owned key whose value is missing or different. `status` and `list` show drift. Drift is read from the file each time; no settings state is stored.
 - A write changes only owned keys and replaces the file with one rename, keeping its permissions. How a line is read and written is ADR-0027's.
 - lum refuses to write settings while the app runs, because the app would overwrite them on its next save.
 - The first owned setting is mGBA's `updateAutoCheck=0`: lum installs updates, and mGBA's updater would replace lum's files and leave lum's recorded version wrong.

@@ -180,7 +180,6 @@ pub enum EnvCommand {
         alias: String,
     },
     /// Show managed aliases and forced defaults.
-    #[usage(visible_alias = "ls")]
     List,
     /// Print the directory lum installs tools into, which `init` puts on PATH.
     BinDir,
@@ -197,7 +196,6 @@ pub enum ToolsCommand {
         force: bool,
     },
     /// List managed tools and local state.
-    #[usage(visible_alias = "ls")]
     List,
     /// Show install details and the latest version for one tool.
     Status {
@@ -235,7 +233,6 @@ pub enum AppsCommand {
         force: bool,
     },
     /// List apps, their install state and settings.
-    #[usage(visible_alias = "ls")]
     List,
     /// Show install details, the latest version and settings for one app.
     Status {
@@ -308,7 +305,6 @@ pub enum MirrorCommand {
     /// Create a sample mirror config file if none exists.
     Init,
     /// List configured mirror repositories.
-    #[usage(visible_alias = "ls")]
     List,
     /// Clone or update all configured mirror repositories.
     Sync {
@@ -406,7 +402,6 @@ pub enum NetCommand {
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum FontCommand {
     /// List managed fonts and local state.
-    #[usage(visible_alias = "ls")]
     List,
     /// Install a managed font.
     Install {
@@ -496,8 +491,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_apps_ls() {
-        let cli = parse(&["apps", "ls"]);
+    fn parses_apps_list() {
+        let cli = parse(&["apps", "list"]);
         assert!(matches!(
             cli.command,
             Commands::Apps {

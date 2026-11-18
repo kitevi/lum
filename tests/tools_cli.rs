@@ -9,11 +9,11 @@ fn lum_with_env(home: &TempDir) -> Command {
 }
 
 #[test]
-fn tools_ls_succeeds_with_empty_catalog() {
+fn tools_list_succeeds_with_empty_catalog() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["tools", "ls"])
+        .args(["tools", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("TOOL"));
