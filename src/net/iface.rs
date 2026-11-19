@@ -51,7 +51,7 @@ pub(super) fn pick(
         }
         let names: Vec<&str> = linked.iter().map(|iface| iface.name.as_str()).collect();
         bail!(
-            "several wired interfaces have a link ({}); choose one with --iface",
+            "several wired interfaces have a link ({}); choose one with --interface",
             names.join(", ")
         );
     }
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(pick(all.clone(), Some("eth1"), None).unwrap().name, "eth1");
         let error = pick(all, None, None).unwrap_err().to_string();
         assert!(error.contains("eth0, eth1"), "{error}");
-        assert!(error.contains("--iface"), "{error}");
+        assert!(error.contains("--interface"), "{error}");
     }
 
     #[test]

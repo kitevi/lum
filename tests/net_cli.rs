@@ -34,7 +34,7 @@ fn net_on_help_documents_the_forwarded_command() {
         .assert()
         .success()
         .stdout(contains("COMMAND"))
-        .stdout(contains("--iface"));
+        .stdout(contains("--interface"));
 }
 
 #[test]
@@ -53,6 +53,6 @@ fn net_test_rejects_out_of_range_durations() {
     net(&state)
         .args(["test", "--seconds", "500"])
         .assert()
-        .failure()
-        .stderr(contains("--seconds must be between 5 and 120"));
+        .code(2)
+        .stderr(contains("expected a whole number from 5 to 120"));
 }

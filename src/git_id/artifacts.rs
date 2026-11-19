@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::config::{Identity, data_dir};
@@ -112,78 +113,87 @@ pub fn cleanup_old_backups() -> Result<()> {
     Ok(())
 }
 
-pub fn cleanup_orphan_identity_configs<F>(
-    identities: &[Identity],
-    identity_git_config_path: F,
-) -> Result<()>
-where
-    F: Fn(&Identity) -> Result<PathBuf>,
-{
-    let home = crate::paths::home_dir()?;
-    let active: std::collections::HashSet<_> = identities
-        .iter()
-        .map(|identity| identity.name.clone())
-        .collect();
-    for entry in std::fs::read_dir(&home)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if let Some(identity_name) = name.strip_prefix(".gitconfig-lum-git-id-")
-            && !active.contains(identity_name)
-            && is_lum_managed_file(
-                &entry.path(),
-                &format!("# lum:git-id:managed identity={identity_name}"),
-            )?
-        {
-            backup_and_remove(&[entry.path()])?;
-        }
-    }
-    let _ = identity_git_config_path;
-    Ok(())
+/// What an identity no longer in the config left behind: the lum-marked files `sync` backs up
+/// and removes, and `status` reports.
+#[derive(Default)]
+pub struct Orphan {
+    pub name: String,
+    git_config: Option<PathBuf>,
+    key_pair: Vec<PathBuf>,
 }
 
-pub fn cleanup_orphan_key_pairs(identities: &[Identity]) -> Result<()> {
-    let ssh_dir = home_path(".ssh")?;
-    if !ssh_dir.exists() {
-        return Ok(());
+impl Orphan {
+    /// The files, in words: `key pair and git config`, `key pair` or `git config`.
+    pub fn contents(&self) -> &'static str {
+        match (self.key_pair.is_empty(), self.git_config.is_some()) {
+            (false, true) => "key pair and git config",
+            (false, false) => "key pair",
+            (true, _) => "git config",
+        }
     }
-    let active: std::collections::HashSet<_> = identities
+
+    fn paths(&self) -> impl Iterator<Item = &PathBuf> {
+        self.git_config.iter().chain(&self.key_pair)
+    }
+}
+
+/// The identities missing from `identities` whose lum-marked Git config or key pair is still
+/// there, by name. An unmarked file is never an orphan.
+pub fn find_orphans(identities: &[Identity]) -> Result<Vec<Orphan>> {
+    let active: HashSet<&str> = identities
         .iter()
-        .map(|identity| identity.name.clone())
+        .map(|identity| identity.name.as_str())
         .collect();
-    for entry in std::fs::read_dir(&ssh_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let Some(identity_name) = file_name
-            .strip_prefix("lum-git-id-")
-            .and_then(|name| name.strip_suffix(".pub"))
+    let mut orphans = BTreeMap::<String, Orphan>::new();
+    for entry in std::fs::read_dir(crate::paths::home_dir()?)? {
+        let path = entry?.path();
+        let Some(name) =
+            file_name(&path).and_then(|name| name.strip_prefix(".gitconfig-lum-git-id-"))
         else {
             continue;
         };
-        if active.contains(identity_name) {
-            continue;
+        if !active.contains(name)
+            && is_lum_managed_file(&path, &format!("# lum:git-id:managed identity={name}"))?
+        {
+            orphans.entry(name.to_owned()).or_default().git_config = Some(path.clone());
         }
-        let marker = format!("[lum:git-id identity={identity_name}]");
-        let content = read_optional(&path)?;
-        if !content.contains(&marker) {
-            continue;
-        }
-        let private_key = ssh_dir.join(format!("lum-git-id-{identity_name}"));
-        let mut paths = vec![path];
-        if private_key.exists() {
-            paths.push(private_key);
-        }
-        backup_and_remove(&paths)?;
     }
-    Ok(())
+    let ssh_dir = home_path(".ssh")?;
+    if ssh_dir.exists() {
+        for entry in std::fs::read_dir(&ssh_dir)? {
+            let public_key = entry?.path();
+            let Some(name) = file_name(&public_key)
+                .and_then(|name| name.strip_prefix("lum-git-id-"))
+                .and_then(|name| name.strip_suffix(".pub"))
+            else {
+                continue;
+            };
+            if active.contains(name)
+                || !read_optional(&public_key)?.contains(&format!("[lum:git-id identity={name}]"))
+            {
+                continue;
+            }
+            let private_key = ssh_dir.join(format!("lum-git-id-{name}"));
+            let key_pair = &mut orphans.entry(name.to_owned()).or_default().key_pair;
+            key_pair.push(public_key.clone());
+            if private_key.exists() {
+                key_pair.push(private_key);
+            }
+        }
+    }
+    Ok(orphans
+        .into_iter()
+        .map(|(name, orphan)| Orphan { name, ..orphan })
+        .collect())
 }
 
-fn backup_and_remove(paths: &[PathBuf]) -> Result<()> {
-    if paths.is_empty() {
-        return Ok(());
-    }
+fn file_name(path: &Path) -> Option<&str> {
+    path.file_name()?.to_str()
+}
+
+/// Archives an orphan's files where only the owner can read them, then removes them. Returns
+/// the archive.
+pub fn back_up_and_remove(orphan: &Orphan) -> Result<PathBuf> {
     let backup_dir = data_dir()?.join("backups");
     std::fs::create_dir_all(&backup_dir)?;
     // Archives can hold unencrypted private keys: tempfile names are unique and owner-only.
@@ -193,16 +203,14 @@ fn backup_and_remove(paths: &[PathBuf]) -> Result<()> {
         .tempfile_in(&backup_dir)?;
     let encoder = flate2::write::GzEncoder::new(archive.as_file(), flate2::Compression::default());
     let mut tar = tar::Builder::new(encoder);
-    for path in paths {
-        if path.exists() {
-            tar.append_path_with_name(path, path.file_name().unwrap_or_default())?;
-        }
+    for path in orphan.paths() {
+        tar.append_path_with_name(path, path.file_name().unwrap_or_default())?;
     }
     tar.into_inner()?.finish()?;
     archive.as_file().sync_all()?;
-    archive.keep()?;
-    for path in paths {
+    let (_, archive) = archive.keep()?;
+    for path in orphan.paths() {
         std::fs::remove_file(path)?;
     }
-    Ok(())
+    Ok(archive)
 }

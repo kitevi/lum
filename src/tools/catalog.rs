@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 pub(crate) struct ToolSpec {
     pub name: &'static str,
@@ -15,20 +15,7 @@ pub(crate) fn lookup_tool(name: &str) -> Result<&'static ToolSpec> {
     CATALOG
         .iter()
         .find(|tool| tool.name == name)
-        .with_context(|| {
-            format!(
-                "unknown managed tool {name:?} (available: {})",
-                available_tools()
-            )
-        })
-}
-
-pub(crate) fn available_tools() -> String {
-    CATALOG
-        .iter()
-        .map(|tool| tool.name)
-        .collect::<Vec<_>>()
-        .join(", ")
+        .ok_or_else(|| crate::cli::unknown_name("tool", name, CATALOG.iter().map(|tool| tool.name)))
 }
 
 pub(crate) fn test_artifact_env(spec: &ToolSpec) -> String {

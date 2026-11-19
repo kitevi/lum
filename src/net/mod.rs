@@ -64,10 +64,12 @@ fn link_timeout() -> Duration {
 pub fn run(command: NetCommand) -> Result<()> {
     let platform = platform()?;
     match command {
-        NetCommand::On { iface, command } => on(platform, iface.as_deref(), &command),
+        NetCommand::On { interface, command } => on(platform, interface.as_deref(), &command),
         NetCommand::Off => off(platform),
         NetCommand::Status => status(platform),
-        NetCommand::Test { iface, seconds } => probe::run(platform, iface.as_deref(), seconds),
+        NetCommand::Test { interface, seconds } => {
+            probe::run(platform, interface.as_deref(), seconds.0)
+        }
     }
 }
 
@@ -100,7 +102,7 @@ fn platform() -> Result<&'static dyn Platform> {
     }
 }
 
-/// The wired interfaces' names, for completing `--iface`. None where lum net
+/// The wired interfaces' names, for completing `--interface`. None where lum net
 /// is unsupported or the interfaces cannot be read.
 pub(crate) fn wired_interfaces() -> Vec<String> {
     platform()
@@ -149,7 +151,7 @@ fn on(platform: &dyn Platform, requested: Option<&str>, command: &[String]) -> R
         return finish_command(command, wrap::run(command, &trap), trap.fired());
     };
     if command.is_empty() {
-        say!("Run 'lum net off' to switch back.");
+        say!("Run `lum net off` to switch back.");
         return Ok(());
     }
 
@@ -159,7 +161,7 @@ fn on(platform: &dyn Platform, requested: Option<&str>, command: &[String]) -> R
     };
     say!("Switching shaping off.");
     switch_off(platform, &record)
-        .context("shaping is still on; run 'lum net off' to switch back")?;
+        .context("shaping is still on; run `lum net off` to switch back")?;
     finish_command(command, outcome, trap.fired())
 }
 
@@ -182,7 +184,7 @@ fn status(platform: &dyn Platform) -> Result<()> {
                 );
             } else {
                 say!(
-                    "Shaping: off (a record for {} from {} is left over; 'lum net off' clears it)",
+                    "Shaping: off (a record for {} from {} is left over; `lum net off` clears it)",
                     record.iface,
                     record.started
                 );
@@ -237,7 +239,7 @@ fn begin(platform: &dyn Platform, requested: Option<&str>) -> Result<Option<Shap
             if let Some(requested) = requested {
                 ensure!(
                     requested == record.iface,
-                    "shaping is already on for {}; run 'lum net off' before using {requested}",
+                    "shaping is already on for {}; run `lum net off` before using {requested}",
                     record.iface
                 );
             }

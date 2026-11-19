@@ -229,7 +229,7 @@ fn status_rejects_unknown_apps_and_lists_available() {
         .args(["apps", "status", "wat"])
         .assert()
         .failure()
-        .stderr(contains("unknown managed app \"wat\""))
+        .stderr(contains("unknown app \"wat\""))
         .stderr(contains("mgba"));
 }
 

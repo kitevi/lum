@@ -5,9 +5,9 @@
 ## CLI Shape
 
 ```sh
-eval "$(lum env init)"
-lum env set openrouter sk-or-v1-xxxx
-lum env unset openrouter
+lum env init [--shell <shell>]
+lum env set [--shell <shell>] <alias> <value>
+lum env unset [--shell <shell>] <alias>
 lum env list
 lum env bin-dir
 ```
@@ -16,7 +16,7 @@ lum env bin-dir
 
 Scope: the new value applies to the current shell immediately and to new shells (which replay state via `init`). Already-running processes (editors, agents like `pi`, daemons, other terminals) keep the environment they were started with — Unix copies env at spawn. Restart just that program from an updated shell to pick up the change; no reboot needed.
 
-The same init output also wires shell completions: bash/zsh via `lum __completions <shell>` for the active shell, fish via `command lum __completions fish | source`. Generated scripts call back into `lum` at completion time for candidates. Names complete as well: radio stations, apps, fonts, tools and env aliases from lum's catalogs, git-id identities and mirror tags from their config files, and `lum net`'s `--iface` from the wired interfaces. The completers are in `src/cli/complete.rs`.
+The same init output also wires shell completions: bash/zsh via `lum __completions <shell>` for the active shell, fish via `command lum __completions fish | source`. Generated scripts call back into `lum` at completion time for candidates. Names complete as well: radio stations, apps, fonts, tools and env aliases from lum's catalogs, git-id identities and mirror tags from their config files, and `lum net`'s `--interface` from the wired interfaces. The completers are in `src/cli/complete.rs`.
 
 On Windows, PowerShell is the supported shell. Add this to `$PROFILE`:
 

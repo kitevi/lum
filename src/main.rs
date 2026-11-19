@@ -5,7 +5,7 @@ mod cli;
 mod display;
 mod env;
 mod ffmpeg;
-mod font;
+mod fonts;
 mod git_id;
 mod github;
 mod logging;
@@ -64,7 +64,7 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Tools { command } => tools::run(command),
         Commands::Apps { command } => apps::run(command),
         Commands::Yt { command } => yt::run(command),
-        Commands::Font { command } => font::run(command),
+        Commands::Fonts { command } => fonts::run(command),
         Commands::Vol { command } => vol::run(command),
         Commands::Net { command } => net::run(command),
         Commands::Display { command } => display::run(command),

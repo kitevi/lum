@@ -4,11 +4,13 @@ use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 use super::ensure_git_on_path;
+use crate::cli::InRange;
 
 #[derive(Debug, usage_rs::Args, Clone)]
-#[usage(effect = "read")]
+#[usage(effect = "write")]
 pub struct ScanArgs {
-    /// Directory to scan. Defaults to the current directory. By default, contacts upstream remotes.
+    /// Directory to scan; the current one by default.
+    #[usage(value_hint = usage_rs::ValueHint::DirPath)]
     pub path: Option<String>,
 
     /// Descend into hidden (dot-prefixed) directories.
@@ -20,8 +22,8 @@ pub struct ScanArgs {
     pub offline: bool,
 
     /// Maximum concurrent git operations.
-    #[usage(short = 'j', long, default = "4")]
-    pub jobs: usize,
+    #[usage(short = 'j', long, default = "4", value_hint = usage_rs::ValueHint::Other)]
+    pub jobs: InRange<1>,
 }
 
 pub fn run(args: &ScanArgs) -> Result<()> {
@@ -29,11 +31,11 @@ pub fn run(args: &ScanArgs) -> Result<()> {
     let root = args.path.as_deref().unwrap_or(".");
     let root = Path::new(root);
     anyhow::ensure!(root.is_dir(), "not a directory: {}", root.display());
-    scan_path(root, args.hidden, args.jobs, args.offline)?;
+    scan_path(root, args.hidden, args.jobs.0, args.offline)?;
     Ok(())
 }
 
-fn scan_path(root: &Path, include_hidden: bool, jobs: usize, offline: bool) -> Result<()> {
+fn scan_path(root: &Path, include_hidden: bool, jobs: u64, offline: bool) -> Result<()> {
     let mut repos = walk(root, include_hidden);
     repos.sort_by(|a, b| a.path.cmp(&b.path));
     if offline {

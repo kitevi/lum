@@ -11,9 +11,8 @@ mod credential;
 
 use crate::paths::expand_path;
 use artifacts::{
-    cleanup_old_backups, cleanup_orphan_identity_configs, cleanup_orphan_key_pairs,
-    has_settings_after_section, is_lum_managed_file, read_optional, remove_marked_section,
-    replace_marked_section,
+    back_up_and_remove, cleanup_old_backups, find_orphans, has_settings_after_section,
+    is_lum_managed_file, read_optional, remove_marked_section, replace_marked_section,
 };
 pub use config::config_path;
 use config::{
@@ -38,9 +37,8 @@ pub fn run(command: GitIdCommand) -> Result<()> {
         GitIdCommand::Init => init(),
         GitIdCommand::Where => where_am_i(),
         GitIdCommand::Sync => sync(),
-        GitIdCommand::Status => status(),
-        GitIdCommand::Info { identity } => info(&identity),
-        GitIdCommand::Pubkey { identity } => pubkey(&identity),
+        GitIdCommand::Status { identity } => status(identity.as_deref()),
+        GitIdCommand::PublicKey { identity } => public_key(&identity),
         GitIdCommand::Files => files(),
     }
 }
@@ -69,6 +67,9 @@ fn init() -> Result<()> {
 }
 
 fn where_am_i() -> Result<()> {
+    if config_file()?.is_none() {
+        return Ok(());
+    }
     let identities = load_config()?;
     let cwd = std::env::current_dir()?;
     let expected = detect_identity(&identities, &cwd);
@@ -94,7 +95,7 @@ fn where_am_i() -> Result<()> {
                     expected.name
                 ),
                 (None, Some(expected), None) => anyhow::bail!(
-                    "Git is not using identity {} here. Run lum git-id sync if you have not; otherwise this is a linked worktree of a repository outside the managed folder, and Git goes by the location of the .git directory",
+                    "Git is not using identity {} here. Run `lum git-id sync` if you have not; otherwise this is a linked worktree of a repository outside the managed folder, and Git goes by the location of the .git directory",
                     expected.name
                 ),
             }
@@ -136,7 +137,9 @@ fn identity_name_from_origin(origin: &str) -> Option<&str> {
 }
 
 fn sync() -> Result<()> {
-    let path = config_path()?;
+    let Some(path) = config_file()? else {
+        return Ok(());
+    };
     crate::private_file::harden(&path)?;
     let identities = load_config()?;
     for warning in folder_nesting_warnings(&identities) {
@@ -164,8 +167,15 @@ fn sync() -> Result<()> {
         );
     }
     write_allowed_signers(&synced)?;
-    cleanup_orphan_identity_configs(&identities, identity_git_config_path)?;
-    cleanup_orphan_key_pairs(&identities)?;
+    for orphan in find_orphans(&identities)? {
+        let backup = back_up_and_remove(&orphan)?;
+        println!(
+            "Removed the {} of {}, an identity no longer in the config. Backup: {}",
+            orphan.contents(),
+            orphan.name,
+            backup.display()
+        );
+    }
 
     let failures = identities.len() - synced.len();
     if failures > 0 {
@@ -354,13 +364,27 @@ fn write_allowed_signers(identities: &[&Identity]) -> Result<()> {
     replace_marked_section(&path, SECTION_BEGIN, SECTION_END, &section)
 }
 
-fn status() -> Result<()> {
+fn status(name: Option<&str>) -> Result<()> {
+    if let Some(name) = name {
+        return identity_status(name);
+    }
+    if config_file()?.is_none() {
+        return Ok(());
+    }
     let global = read_optional(&crate::paths::home_path(".gitconfig")?)?;
-    for identity in load_config()? {
-        match identity_sync_problem(&identity, &global)? {
+    let identities = load_config()?;
+    for identity in &identities {
+        match identity_sync_problem(identity, &global)? {
             None => println!("{}  active", identity.name),
             Some(problem) => println!("{}  needs sync ({problem})", identity.name),
         }
+    }
+    for orphan in find_orphans(&identities)? {
+        println!(
+            "{}  orphaned (sync backs up and removes its {})",
+            orphan.name,
+            orphan.contents()
+        );
     }
     Ok(())
 }
@@ -386,12 +410,42 @@ fn identity_sync_problem(identity: &Identity, global: &str) -> Result<Option<&'s
     Ok(None)
 }
 
-fn info(name: &str) -> Result<()> {
+/// The config file, or `None` once it has said that there is none yet.
+fn config_file() -> Result<Option<std::path::PathBuf>> {
+    let path = config_path()?;
+    if path.exists() {
+        return Ok(Some(path));
+    }
+    println!("{}", not_configured(&path));
+    Ok(None)
+}
+
+/// What to say when the config file does not exist yet.
+fn not_configured(path: &std::path::Path) -> String {
+    format!(
+        "No identities configured (config file not found: {}). Run `lum git-id init` to create it.",
+        path.display()
+    )
+}
+
+/// The configured identity called `name`.
+fn find(name: &str) -> Result<Identity> {
+    let path = config_path()?;
+    anyhow::ensure!(path.exists(), "{}", not_configured(&path));
     let identities = load_config()?;
-    let identity = identities
+    let names: Vec<String> = identities
         .iter()
+        .map(|identity| identity.name.clone())
+        .collect();
+    identities
+        .into_iter()
         .find(|identity| identity.name == name)
-        .ok_or_else(|| anyhow::anyhow!("identity not found: {name}"))?;
+        .ok_or_else(|| crate::cli::unknown_name("identity", name, names))
+}
+
+/// `status <identity>`: its settings, its files and whether it is in sync.
+fn identity_status(name: &str) -> Result<()> {
+    let identity = &find(name)?;
     println!("Identity: {}", identity.name);
     println!("Author:   {}", identity.author_name);
     println!("Email:    {}", identity.email);
@@ -418,19 +472,19 @@ fn info(name: &str) -> Result<()> {
         "Public key: {}",
         identity_public_key_path(identity)?.display()
     );
+    let global = read_optional(&crate::paths::home_path(".gitconfig")?)?;
+    match identity_sync_problem(identity, &global)? {
+        None => println!("State: active"),
+        Some(problem) => println!("State: needs sync ({problem})"),
+    }
     Ok(())
 }
 
-fn pubkey(name: &str) -> Result<()> {
-    let identities = load_config()?;
-    let identity = identities
-        .iter()
-        .find(|identity| identity.name == name)
-        .ok_or_else(|| anyhow::anyhow!("identity not found: {name}"))?;
-    let path = identity_public_key_path(identity)?;
+fn public_key(name: &str) -> Result<()> {
+    let path = identity_public_key_path(&find(name)?)?;
     let content = std::fs::read_to_string(&path).with_context(|| {
         format!(
-            "reading public key {} (run lum git-id sync)",
+            "reading public key {} (run `lum git-id sync`)",
             path.display()
         )
     })?;

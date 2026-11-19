@@ -7,7 +7,7 @@
 - `lum radio list` lists built-in stations one row per station.
 - `lum radio play <code>` starts a station in the background, replacing any current station. An unknown code fails and prints the list.
 - `lum radio random` starts a random built-in station, skipping the current one.
-- `lum radio status` prints the remembered playback state: `playing`, `paused`, or `stopped`.
+- `lum radio status` prints the remembered playback state: `Radio: playing`, `Radio: paused`, or `Radio: stopped`.
 - `lum radio stop` stops playback and removes the tray.
 - Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
 - Listings are one aligned row per station: `code  name  tag, tag`.
@@ -83,11 +83,11 @@ Controls are process-backed, not terminal-key backed:
 
 State is stored in lum's platform-native state directory as `radio-player.json`, including the remembered runner PID and process start time when available, and `paused`. The runner itself updates `paused` when the tray toggles, only if the file names its own PID, and every write replaces the file atomically so a concurrent `status` never reads half a file. Legacy state files written before runners existed remember an ffplay PID directly and still work; files without `paused` read as not paused.
 
-User-facing output remains plain/script-friendly:
+User-facing output remains plain/script-friendly. `play` prints `playing <code> <description>` and `stop` prints `stopped`; `status` prints one of:
 
-- `playing <code> <description>`
-- `paused <code> <description>`
-- `stopped`
+- `Radio: playing <code> <description>`
+- `Radio: paused <code> <description>`
+- `Radio: stopped`
 
 ## Tests
 
@@ -117,9 +117,9 @@ Pausing is covered by ordinary unit tests (`Playback`, and a supervisor that mus
 
 ```sh
 cargo run -- radio play dron
-cargo run -- radio status   # playing dron SomaFM Drone Zone
+cargo run -- radio status   # Radio: playing dron SomaFM Drone Zone
 # A tray icon appears. Click its "Stop ..." item: audio stops and the item reads "Play ...".
-cargo run -- radio status   # paused dron SomaFM Drone Zone
+cargo run -- radio status   # Radio: paused dron SomaFM Drone Zone
 # Click again: audio returns.
 # Pick another station under "Stations": the icon is replaced and status names the new station.
 # "Random station" does the same with a station other than the current one.

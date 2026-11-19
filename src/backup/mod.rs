@@ -92,7 +92,7 @@ fn upload_target(target: target::BackupTarget) -> Result<()> {
     println!("{url}");
     let code = upload::code_from_url(&url)?;
     println!(
-        "{} - Restore with: lum backup restore {} {}",
+        "{} - Restore with: `lum backup restore {} {}`",
         timestamp(),
         target.name,
         code

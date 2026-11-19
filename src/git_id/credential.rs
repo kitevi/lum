@@ -10,10 +10,10 @@ pub fn run(route_id: &str, operation: &str) -> Result<()> {
     let config_path = super::config::config_path()
         .map_err(|_| anyhow::anyhow!("could not locate the git identity config"))?;
     if !config_path.is_file() {
-        anyhow::bail!("could not read the git identity config; run lum git-id sync");
+        anyhow::bail!("could not read the git identity config; run `lum git-id sync`");
     }
     super::config::ensure_private_config_permissions(&config_path).map_err(|_| {
-        anyhow::anyhow!("git identity config permissions are not private; run lum git-id sync")
+        anyhow::anyhow!("git identity config permissions are not private; run `lum git-id sync`")
     })?;
     let args = [OsString::from(operation)];
     let result = gix_credentials::program::main(
@@ -26,7 +26,7 @@ pub fn run(route_id: &str, operation: &str) -> Result<()> {
 
     result.map_err(|_| {
         anyhow::anyhow!(
-            "credential helper request failed; check the git identity config and run lum git-id sync"
+            "credential helper request failed; check the git identity config and run `lum git-id sync`"
         )
     })
 }

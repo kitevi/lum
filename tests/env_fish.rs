@@ -144,7 +144,7 @@ echo "unset_status=$status"
         "unset failure masked (stdout={stdout:?} stderr={stderr:?})"
     );
     assert!(
-        stderr.contains("unknown environment alias"),
+        stderr.contains("unknown alias"),
         "wrong failure (stderr={stderr:?})"
     );
 }

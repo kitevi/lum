@@ -121,7 +121,7 @@ fn install_cmd(app: &str, force: bool) -> Result<()> {
     }
     if status.exists && status.managed && !force {
         bail!(
-            "{} is already installed at {}; use 'lum apps update {}' or rerun with --force",
+            "{} is already installed at {}; use `lum apps update {}` or rerun with --force",
             spec.name,
             status.path.display(),
             spec.name
@@ -146,7 +146,7 @@ fn update_cmd(app: &str, force: bool) -> Result<()> {
     let status = state::local_status(spec, build)?;
     if !status.managed {
         bail!(
-            "{} is not installed; use 'lum apps install {}' first",
+            "{} is not installed; use `lum apps install {}` first",
             spec.name,
             spec.name
         );
@@ -180,7 +180,7 @@ fn sync_cmd(dry_run: bool) -> Result<()> {
         let status = state::local_status(spec, build)?;
         if status.exists && !status.managed {
             println!(
-                "\u{2022} {}: unmanaged at {}; rerun 'lum apps install {} --force' to take over",
+                "\u{2022} {}: unmanaged at {}; rerun `lum apps install {} --force` to take over",
                 spec.name,
                 status.path.display(),
                 spec.name

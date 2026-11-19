@@ -1,7 +1,7 @@
 //! Names complete from lum's catalogs and from the user's config files.
 
 use assert_cmd::{Command, assert::Assert};
-use predicates::str::contains;
+use predicates::str::{PredicateStrExt, contains, is_empty};
 use tempfile::TempDir;
 
 /// What fish gets back for `line`, with lum's config files in `config`.
@@ -26,7 +26,7 @@ fn catalog_names_complete_with_their_descriptions() {
     for (line, candidate) in [
         ("lum radio play ", "dron\tSomaFM Drone Zone"),
         ("lum apps install ", "mgba\tGame Boy Advance emulator"),
-        ("lum font uninstall ", "dmca-sans-serif\t"),
+        ("lum fonts uninstall ", "dmca-sans-serif\t"),
         ("lum env unset ", "baro\tBARO_DB_URL"),
     ] {
         complete(&config, line).stdout(contains(candidate));
@@ -48,7 +48,7 @@ fn identities_complete_from_the_git_id_config() {
             "folders": [folder]
         }]}),
     );
-    complete(&config, "lum git-id pubkey ").stdout(contains("work\tjane@company.com"));
+    complete(&config, "lum git-id public-key ").stdout(contains("work\tjane@company.com"));
 }
 
 #[test]
@@ -72,4 +72,21 @@ fn mirror_tags_complete_once_each() {
         .map(str::to_owned)
         .collect();
     assert_eq!(tags, ["client", "v2"]);
+}
+
+#[test]
+fn other_values_complete_nothing_and_directories_complete_directories() {
+    let config = TempDir::new().unwrap();
+    for line in [
+        "lum yt audio ",
+        "lum yt video --height ",
+        "lum backup restore bio ",
+        "lum env set openrouter ",
+        "lum repos scan -j ",
+        "lum vol set ",
+        "lum net test --seconds ",
+    ] {
+        complete(&config, line).stdout(is_empty().trim());
+    }
+    complete(&config, "lum repos scan ").stdout(contains("\u{1}dirs"));
 }

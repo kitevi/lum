@@ -40,6 +40,6 @@ fn vol_set_rejects_volume_above_100() {
     lum()
         .args(["vol", "set", "200"])
         .assert()
-        .failure()
-        .stderr(contains("volume must be between 0 and 100"));
+        .code(2)
+        .stderr(contains("expected a whole number from 0 to 100"));
 }

@@ -292,20 +292,7 @@ pub(crate) fn lookup_app(name: &str) -> Result<&'static AppSpec> {
     CATALOG
         .iter()
         .find(|app| app.name == name)
-        .with_context(|| {
-            format!(
-                "unknown managed app {name:?} (available: {})",
-                available_apps()
-            )
-        })
-}
-
-pub(crate) fn available_apps() -> String {
-    CATALOG
-        .iter()
-        .map(|app| app.name)
-        .collect::<Vec<_>>()
-        .join(", ")
+        .ok_or_else(|| crate::cli::unknown_name("app", name, CATALOG.iter().map(|app| app.name)))
 }
 
 #[cfg(test)]

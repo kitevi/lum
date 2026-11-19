@@ -148,12 +148,14 @@ Available aliases:
 
 | Alias | Environment variable |
 | --- | --- |
+| `baro` | `BARO_DB_URL` |
 | `coralbricks` | `CORALBRICKS_API_KEY` |
 | `deploy` | `DEPLOY_API_KEY` |
 | `keenable` | `KEENABLE_API_KEY` |
 | `opencode` | `OPENCODE_API_KEY` |
 | `opendesign` | `OPENDESIGN_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
+| `terr` | `TERR_DB_URL` |
 
 Examples:
 
@@ -164,7 +166,7 @@ lum env unset openrouter
 lum env bin-dir
 ```
 
-After setting or unsetting a value, restart your terminal or re-run your shell init command so the environment updates in the current shell.
+With the shell setup above, `lum env set` and `lum env unset` update the current shell at once. Programs that are already running keep the environment they started with.
 
 ## Managed tools
 
@@ -234,10 +236,10 @@ While a station plays, a system tray icon offers a Stop/Play toggle. It needs a 
 
 ### Repositories
 
-Scan a directory tree for Git repository status:
+Scan a directory tree (the current one by default) for Git repository status:
 
 ```sh
-lum repos scan <directory>
+lum repos scan [path]
 ```
 
 By default this fetches each current branch's upstream remote before reporting ahead/behind status. Use `--offline` to compare against cached remote refs only.
@@ -259,10 +261,9 @@ Manage folder-based Git author identities with SSH or declarative HTTP Basic aut
 lum git-id init
 lum git-id config-path
 lum git-id sync
-lum git-id status
+lum git-id status [identity]
 lum git-id where
-lum git-id info <identity>
-lum git-id pubkey <identity>
+lum git-id public-key <identity>
 lum git-id files
 ```
 

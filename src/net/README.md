@@ -5,15 +5,15 @@
 ## CLI Shape
 
 ```sh
-lum net on [--iface <name>] [[--] <command>...]
+lum net on [--interface <name>] [[--] <command>...]
 lum net off
 lum net status
-lum net test [--iface <name>] [--seconds <5-120>]
+lum net test [--interface <name>] [--seconds <5-120>]
 ```
 
 - `on` forces the link to 100 Mb/s and shapes downloads to 90 Mbit/s.
 - `on <command>` also runs the command, then switches back when it exits, e.g. `lum net on flatpak run com.nvidia.geforcenow` or `lum net on open -W -a "GeForce NOW"`. The command runs as the user; only the switches use root. The `--` is optional: the first word that is not a flag starts the command. The command is looked up before anything changes, so a mistyped name does not cost a switch on and back off.
-- With shaping already on, `on` leaves it as it is, and `--iface` naming another interface is an error: there is one `lumifb0` and one record, so `lum net off` comes first.
+- With shaping already on, `on` leaves it as it is, and `--interface` naming another interface is an error: there is one `lumifb0` and one record, so `lum net off` comes first.
 - `off` undoes whatever the last `on` recorded. Without a record it says so and changes nothing. It never takes the network down: off is the link back at its full speed, unshaped.
 - `status` prints whether shaping is on, then each wired interface with its link and the receive errors it has counted since boot.
 - `test` measures latency for 5 s idle and while downloading from three public test servers for `--seconds` (20 by default), and counts receive errors meanwhile. It needs no root and changes nothing.
@@ -42,7 +42,7 @@ Interface names are read fresh on every run, never stored as the identity: macOS
 
 - Linux reads `/sys/class/net`: an interface is wired Ethernet when it has a `device` (physical), no `wireless` or `phy80211` (not Wi-Fi), and `type` 1 (Ethernet framing). `carrier` and `speed` give the link.
 - macOS reads `ifconfig -a`: an interface is wired when its media names an Ethernet type such as `1000baseT`; Wi-Fi only shows `autoselect`. `status: active` is the link.
-- With one wired link, that is the one. With several, the one carrying the default route (`/proc/net/route`, `route -n get default`), else lum stops and asks for `--iface`. Without a wired link lum stops: shaping is for wired connections only.
+- With one wired link, that is the one. With several, the one carrying the default route (`/proc/net/route`, `route -n get default`), else lum stops and asks for `--interface`. Without a wired link lum stops: shaping is for wired connections only.
 
 ## Root
 

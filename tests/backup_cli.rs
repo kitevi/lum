@@ -11,7 +11,7 @@ fn backup_creates_and_restores() {
         .args(["backup", "--help"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("Backup and restore"))
+        .stdout(predicates::str::contains("Back up and restore"))
         .stdout(predicates::str::contains("  create "))
         .stdout(predicates::str::contains("  restore "));
 }

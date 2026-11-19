@@ -25,12 +25,7 @@ pub fn run(command: VolCommand) -> Result<()> {
             println!("Volume: {}", device.get_vol()?);
             Ok(())
         }
-        VolCommand::Set { level } => {
-            if level > 100 {
-                anyhow::bail!("volume must be between 0 and 100");
-            }
-            set(level as u8, false)
-        }
+        VolCommand::Set { level } => set(u8::try_from(level.0)?, false),
         VolCommand::Reset => set(default_volume(), true),
     }
 }

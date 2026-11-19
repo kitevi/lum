@@ -27,7 +27,9 @@ fn tools_rejects_unknown_tools() {
         .args(["tools", "status", "scc"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("unknown managed tool \"scc\""));
+        .stderr(predicates::str::contains(
+            "unknown tool \"scc\" (none available)",
+        ));
 }
 
 #[test]
@@ -38,7 +40,9 @@ fn tools_uninstall_rejects_unknown_tools() {
         .args(["tools", "uninstall", "scc"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("unknown managed tool \"scc\""));
+        .stderr(predicates::str::contains(
+            "unknown tool \"scc\" (none available)",
+        ));
 }
 
 #[test]

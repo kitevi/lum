@@ -22,9 +22,9 @@ pub fn run(command: MirrorCommand) -> Result<()> {
         }
         MirrorCommand::Init => init(),
         MirrorCommand::List => list(),
-        MirrorCommand::Sync { jobs } => sync(jobs),
-        MirrorCommand::Status { jobs, offline } => status(jobs, offline),
-        MirrorCommand::Watch { tag, cycles } => watch::run(tag, cycles),
+        MirrorCommand::Sync { jobs } => sync(jobs.0),
+        MirrorCommand::Status { jobs, offline } => status(jobs.0, offline),
+        MirrorCommand::Watch { tag, cycles } => watch::run(&tag, cycles),
     }
 }
 fn mirror_dir() -> Result<std::path::PathBuf> {
@@ -65,20 +65,33 @@ fn init() -> Result<()> {
     Ok(())
 }
 
-fn list() -> Result<()> {
+/// The configured repos, or `None` once it has said that there are none.
+fn configured_repos() -> Result<Option<Vec<config::RepoEntry>>> {
     let path = config::config_path()?;
     if !path.exists() {
-        println!(
-            "No repos configured (config file not found: {})",
-            path.display()
-        );
-        return Ok(());
+        println!("{}", not_configured(&path));
+        return Ok(None);
     }
     let repos = config::load(&path)?;
     if repos.is_empty() {
         println!("No repos configured");
-        return Ok(());
+        return Ok(None);
     }
+    Ok(Some(repos))
+}
+
+/// What to say when the config file does not exist yet.
+fn not_configured(path: &std::path::Path) -> String {
+    format!(
+        "No repos configured (config file not found: {}). Run `lum repos mirror init` to create it.",
+        path.display()
+    )
+}
+
+fn list() -> Result<()> {
+    let Some(repos) = configured_repos()? else {
+        return Ok(());
+    };
     for repo in &repos {
         let tags = if repo.tags.is_empty() {
             String::new()
@@ -96,21 +109,11 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-fn sync(jobs: usize) -> Result<()> {
+fn sync(jobs: u64) -> Result<()> {
     ensure_git_on_path()?;
-    let path = config::config_path()?;
-    if !path.exists() {
-        println!(
-            "No repos configured (config file not found: {})",
-            path.display()
-        );
+    let Some(repos) = configured_repos()? else {
         return Ok(());
-    }
-    let repos = config::load(&path)?;
-    if repos.is_empty() {
-        println!("No repos configured");
-        return Ok(());
-    }
+    };
     let mirror = mirror_dir()?;
     // Ensure mirror directory exists
     std::fs::create_dir_all(&mirror)
@@ -147,60 +150,34 @@ fn sync_one(repo: &config::RepoEntry, mirror: &std::path::Path) -> bool {
     false
 }
 
-fn status(jobs: usize, offline: bool) -> Result<()> {
+/// Reports each mirror as up to date, behind or missing. What it finds is output, not an
+/// exit code: only a mirror it could not check fails the command.
+fn status(jobs: u64, offline: bool) -> Result<()> {
     ensure_git_on_path()?;
-    let path = config::config_path()?;
-    if !path.exists() {
-        println!(
-            "No repos configured (config file not found: {})",
-            path.display()
-        );
+    let Some(repos) = configured_repos()? else {
         return Ok(());
-    }
-    let repos = config::load(&path)?;
-    if repos.is_empty() {
-        println!("No repos configured");
-        return Ok(());
-    }
+    };
     let mirror = mirror_dir()?;
-    let outcomes = super::worker_pool(jobs, repos.len())?.install(|| {
+    let any_error = super::worker_pool(jobs, repos.len())?.install(|| {
         repos
             .par_iter()
             .map(|repo| status_one(repo, &mirror, offline))
-            .collect::<Vec<_>>()
+            .reduce(|| false, |any_error, failed| any_error || failed)
     });
-    let mut any_behind = false;
-    let mut any_error = false;
-    for outcome in outcomes {
-        any_behind |= outcome.behind;
-        any_error |= outcome.error;
-    }
-
     if any_error {
-        std::process::exit(1);
-    }
-    if any_behind {
-        std::process::exit(2);
+        anyhow::bail!("some mirrors could not be checked");
     }
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy)]
-struct StatusOutcome {
-    behind: bool,
-    error: bool,
-}
-
-fn status_one(repo: &config::RepoEntry, mirror: &std::path::Path, offline: bool) -> StatusOutcome {
+/// Prints how one mirror compares with its remote; true when it could not check it.
+fn status_one(repo: &config::RepoEntry, mirror: &std::path::Path, offline: bool) -> bool {
     let dir_name = repo.directory_name();
     let dst = mirror.join(&dir_name);
 
     if !dst.exists() {
         println!("{}: missing", dst.display());
-        return StatusOutcome {
-            behind: true,
-            error: false,
-        };
+        return false;
     }
 
     if offline {
@@ -213,18 +190,12 @@ fn status_one(repo: &config::RepoEntry, mirror: &std::path::Path, offline: bool)
                         repo.branch,
                         dst.display()
                     );
-                    StatusOutcome {
-                        behind: false,
-                        error: true,
-                    }
+                    true
                 }
             },
             Err(e) => {
                 eprintln!("error reading local HEAD for {}: {e}", dst.display());
-                StatusOutcome {
-                    behind: false,
-                    error: true,
-                }
+                true
             }
         }
     } else {
@@ -233,35 +204,24 @@ fn status_one(repo: &config::RepoEntry, mirror: &std::path::Path, offline: bool)
                 Ok(local) => status_from_heads(&dst, local, remote),
                 Err(e) => {
                     eprintln!("error reading local HEAD for {}: {e}", dst.display());
-                    StatusOutcome {
-                        behind: false,
-                        error: true,
-                    }
+                    true
                 }
             },
             Err(e) => {
                 eprintln!("error checking remote {}: {e}", dir_name);
-                StatusOutcome {
-                    behind: false,
-                    error: true,
-                }
+                true
             }
         }
     }
 }
 
-fn status_from_heads(dst: &std::path::Path, local: String, remote: String) -> StatusOutcome {
-    if local == remote {
-        println!("{}: up to date", dst.display());
-        StatusOutcome {
-            behind: false,
-            error: false,
-        }
+/// Prints whether a mirror is up to date; false, since checking it worked.
+fn status_from_heads(dst: &std::path::Path, local: String, remote: String) -> bool {
+    let state = if local == remote {
+        "up to date"
     } else {
-        println!("{}: behind", dst.display());
-        StatusOutcome {
-            behind: true,
-            error: false,
-        }
-    }
+        "behind"
+    };
+    println!("{}: {state}", dst.display());
+    false
 }

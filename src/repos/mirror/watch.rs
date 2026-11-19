@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 use crate::paths;
@@ -14,66 +14,51 @@ pub struct Change {
     pub new_sha: String,
 }
 
-pub fn run(tag: Option<String>, cycles: Option<usize>) -> Result<()> {
-    match tag {
-        None => {
-            let config_path = config::config_path()?;
-            if config_path.exists() {
-                println!(
-                    "Specify a tag to watch. Run `lum repos mirror list` to see your repos and tags."
-                );
-            } else {
-                println!(
-                    "No mirror repos configured yet. Run `lum repos mirror init` to get started."
-                );
-            }
-            Ok(())
+pub fn run(tag: &str, cycles: Option<usize>) -> Result<()> {
+    let config_path = config::config_path()?;
+    anyhow::ensure!(
+        config_path.exists(),
+        "{}",
+        super::not_configured(&config_path)
+    );
+    let repos = config::load(&config_path)?;
+    let matching: Vec<_> = repos.iter().filter(|r| r.has_tag(tag)).collect();
+    if matching.is_empty() {
+        let tags: BTreeSet<&str> = repos
+            .iter()
+            .flat_map(|repo| repo.tags.iter().map(String::as_str))
+            .collect();
+        return Err(crate::cli::unknown_name("tag", tag, tags));
+    }
+
+    println!("{}", format_startup_banner(tag, &matching));
+    send_startup_notification(tag);
+    let state_path = paths::repos_mirror_watch_state_file()?;
+    let cycle_count = cycles.unwrap_or(usize::MAX);
+
+    for _ in 0..cycle_count {
+        let changes = check_cycle(&matching, &state_path)?;
+
+        for change in &changes {
+            let short_sha = &change.new_sha[..7];
+            let old_info = change
+                .old_sha
+                .as_ref()
+                .map(|s| s[..7].to_string())
+                .unwrap_or_default();
+            println!(
+                "{}/{} — HEAD changed to {} (was {})",
+                change.basename, change.branch, short_sha, old_info
+            );
+            send_notification(&change.basename, &change.branch, short_sha);
         }
-        Some(tag) => {
-            let config_path = config::config_path()?;
-            let repos = if config_path.exists() {
-                config::load(&config_path)?
-            } else {
-                Vec::new()
-            };
 
-            let matching: Vec<_> = repos.iter().filter(|r| r.has_tag(&tag)).collect();
-
-            if matching.is_empty() {
-                println!("No repos found with tag \"{tag}\".");
-                return Ok(());
-            }
-
-            println!("{}", format_startup_banner(&tag, &matching));
-            send_startup_notification(&tag);
-            let state_path = paths::repos_mirror_watch_state_file()?;
-            let cycle_count = cycles.unwrap_or(usize::MAX);
-
-            for _ in 0..cycle_count {
-                let changes = check_cycle(&matching, &state_path)?;
-
-                for change in &changes {
-                    let short_sha = &change.new_sha[..7];
-                    let old_info = change
-                        .old_sha
-                        .as_ref()
-                        .map(|s| s[..7].to_string())
-                        .unwrap_or_default();
-                    println!(
-                        "{}/{} — HEAD changed to {} (was {})",
-                        change.basename, change.branch, short_sha, old_info
-                    );
-                    send_notification(&change.basename, &change.branch, short_sha);
-                }
-
-                if cycle_count == usize::MAX {
-                    std::thread::sleep(std::time::Duration::from_secs(300));
-                }
-            }
-
-            Ok(())
+        if cycle_count == usize::MAX {
+            std::thread::sleep(std::time::Duration::from_secs(300));
         }
     }
+
+    Ok(())
 }
 
 /// Run a single poll cycle. Returns changes detected.
@@ -138,7 +123,7 @@ fn send_startup_notification(tag: &str) {
     if std::env::var("LUM_NO_NOTIFY").is_ok() {
         return;
     }
-    let summary = "lum watch".to_string();
+    let summary = "lum repos mirror watch".to_string();
     let body = startup_notification_body(tag);
     if let Err(e) = notify_rust::Notification::new()
         .summary(&summary)

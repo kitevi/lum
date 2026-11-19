@@ -30,7 +30,7 @@ pub(super) fn apps<P>(_: &P, _: &CompleteCtx<'_>) -> Candidates {
 }
 
 pub(super) fn fonts<P>(_: &P, _: &CompleteCtx<'_>) -> Candidates {
-    crate::font::catalog::CATALOG
+    crate::fonts::catalog::CATALOG
         .iter()
         .map(|font| Candidate::described(font.name, font.description))
         .collect()

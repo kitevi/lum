@@ -368,6 +368,19 @@ fn scan_accepts_jobs_limit_flag() {
 }
 
 #[test]
+fn scan_rejects_zero_jobs() {
+    let tmp = TempDir::new().unwrap();
+
+    Command::cargo_bin("lum")
+        .unwrap()
+        .args(["repos", "scan", "--offline", "-j", "0"])
+        .arg(tmp.path())
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("invalid value"));
+}
+
+#[test]
 fn scan_does_not_apply_ignore_files_or_enter_git_metadata() {
     let tmp = TempDir::new().unwrap();
     create_clean_repo(tmp.path());
@@ -769,7 +782,7 @@ mkdir -p "$dst/.git"
 
 #[cfg(unix)]
 #[test]
-fn mirror_status_errors_take_precedence_over_missing_repositories() {
+fn mirror_status_fails_when_a_mirror_cannot_be_checked() {
     let home = TempDir::new().unwrap();
     write_mirror_config(
         &home,
@@ -865,33 +878,42 @@ fn mirror_status_runs_multiple_checks_concurrently() {
     );
 }
 
+#[test]
+fn mirror_status_reports_missing_mirrors_without_failing() {
+    let home = TempDir::new().unwrap();
+    write_mirror_config(&home, &[("https://example.com/missing.git", "main")]);
+
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "status", "--offline"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("missing-main: missing"));
+}
+
 // --- mirror watch tests ---
 
 #[test]
-fn mirror_watch_without_tag_with_config_points_to_list() {
-    let home = TempDir::new().unwrap();
-    let config_dir = home.path().join("config").join("lum");
-    std::fs::create_dir_all(&config_dir).unwrap();
-    std::fs::write(config_dir.join("repos.json"), r#"{"repos": []}"#).unwrap();
-    lum_with_xdg(&home)
-        .args(["repos", "mirror", "watch"])
-        .assert()
-        .success()
-        .stdout(predicates::str::contains("mirror list"));
-}
-
-#[test]
-fn mirror_watch_without_tag_no_config_points_to_init() {
+fn mirror_watch_requires_a_tag() {
     let home = TempDir::new().unwrap();
     lum_with_xdg(&home)
         .args(["repos", "mirror", "watch"])
         .assert()
-        .success()
-        .stdout(predicates::str::contains("mirror init"));
+        .code(2)
+        .stderr(predicates::str::contains("required"));
 }
 
 #[test]
-fn mirror_watch_with_tag_no_matching_repos() {
+fn mirror_watch_without_config_points_to_init() {
+    let home = TempDir::new().unwrap();
+    lum_with_xdg(&home)
+        .args(["repos", "mirror", "watch", "rebase"])
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("lum repos mirror init"));
+}
+
+#[test]
+fn mirror_watch_rejects_an_unknown_tag_and_lists_the_tags() {
     let home = TempDir::new().unwrap();
     let config_dir = home.path().join("config").join("lum");
     std::fs::create_dir_all(&config_dir).unwrap();
@@ -904,8 +926,10 @@ fn mirror_watch_with_tag_no_matching_repos() {
     lum_with_xdg(&home)
         .args(["repos", "mirror", "watch", "nonexistent"])
         .assert()
-        .success()
-        .stdout(predicates::str::contains("No repos found"));
+        .code(1)
+        .stderr(predicates::str::contains(
+            "unknown tag \"nonexistent\" (available: other)",
+        ));
 }
 
 #[test]

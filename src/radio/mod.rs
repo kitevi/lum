@@ -16,13 +16,10 @@ use playback::Playback;
 use player::{ExternalPlayer, Outcome};
 use stations::Station;
 
-/// The catalog station with this code, or an error that lists the catalog.
+/// The catalog station with this code, or an error that lists the codes.
 fn find_station(code: &str) -> Result<&'static Station> {
-    stations::find(code).with_context(|| {
-        format!(
-            "station not found: {code}\n\n{}",
-            stations::format_listing()
-        )
+    stations::find(code).ok_or_else(|| {
+        crate::cli::unknown_name("station", code, stations::all().iter().map(|s| s.code))
     })
 }
 
@@ -124,15 +121,15 @@ fn stop() -> Result<()> {
 
 fn print_status() -> Result<()> {
     let Some(state) = read_state()? else {
-        println!("stopped");
+        println!("Radio: stopped");
         return Ok(());
     };
 
     if process_is_alive(&state) {
-        println!("{}", status_line(&state));
+        println!("Radio: {}", status_line(&state));
     } else {
         let _ = remove_state();
-        println!("stopped");
+        println!("Radio: stopped");
     }
 
     Ok(())
@@ -566,8 +563,8 @@ mod tests {
         let error = find_station("nope").expect_err("an unknown code must fail");
         let message = error.to_string();
 
-        assert!(message.starts_with("station not found: nope"));
-        assert!(message.contains("conc  RadCap Musique Concrète"));
+        assert!(message.starts_with("unknown station \"nope\" (available: "));
+        assert!(message.contains("conc"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 pub(crate) struct FontSpec {
     pub name: &'static str,
@@ -33,13 +33,5 @@ pub(crate) fn lookup_font(name: &str) -> Result<&'static FontSpec> {
     CATALOG
         .iter()
         .find(|f| f.name == name)
-        .with_context(|| format!("unknown font {name:?} (available: {})", available_fonts()))
-}
-
-pub(crate) fn available_fonts() -> String {
-    CATALOG
-        .iter()
-        .map(|f| f.name)
-        .collect::<Vec<_>>()
-        .join(", ")
+        .ok_or_else(|| crate::cli::unknown_name("font", name, CATALOG.iter().map(|f| f.name)))
 }

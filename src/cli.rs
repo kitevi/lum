@@ -47,7 +47,7 @@ pub enum Commands {
         #[usage(subcommand)]
         command: RadioCommand,
     },
-    /// Backup and restore directories.
+    /// Back up and restore directories.
     Backup {
         #[usage(subcommand)]
         command: BackupCommand,
@@ -57,7 +57,7 @@ pub enum Commands {
         #[usage(subcommand)]
         command: EnvCommand,
     },
-    /// Scan directory trees for Git repositories and report status.
+    /// Scan directory trees for Git repositories, and mirror configured ones.
     Repos {
         #[usage(subcommand)]
         command: ReposCommand,
@@ -78,27 +78,27 @@ pub enum Commands {
         #[usage(subcommand)]
         command: AppsCommand,
     },
-    /// Download audio, video, or albums from YouTube using yt-dlp.
+    /// Download audio, video, or albums from YouTube using yt-dlp, and print channel RSS feeds.
     Yt {
         #[usage(subcommand)]
         command: YtCommand,
     },
     /// Install and manage fonts.
-    Font {
+    Fonts {
         #[usage(subcommand)]
-        command: FontCommand,
+        command: FontsCommand,
     },
     /// Show, set or reset the system volume.
     Vol {
         #[usage(subcommand)]
         command: VolCommand,
     },
-    /// Switch shaping of the wired connection on and off. (Linux and macOS)
+    /// Switch shaping of the wired connection on and off, and test the link. (Linux and macOS)
     Net {
         #[usage(subcommand)]
         command: NetCommand,
     },
-    /// HiDPI on and off, and sRGB color, for monitors that aren't Retina. (macOS)
+    /// Turn HiDPI on and off, and set sRGB color, for monitors that aren't Retina. (macOS)
     Display {
         #[usage(subcommand)]
         command: DisplayCommand,
@@ -166,6 +166,7 @@ pub enum BackupCommand {
         #[usage(value_enum)]
         target: BackupTargetName,
         /// Code that `lum backup create` printed, such as jtPb.gz.
+        #[usage(value_hint = usage_rs::ValueHint::Other)]
         code: String,
     },
 }
@@ -173,7 +174,7 @@ pub enum BackupCommand {
 /// What `lum backup` backs up and restores.
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
 pub enum BackupTargetName {
-    /// ~/.bio (macOS and Linux).
+    /// ~/.bio (Linux and macOS).
     Bio,
     /// ~/ROMs: ROMs and the saves mGBA keeps beside them.
     Roms,
@@ -181,11 +182,13 @@ pub enum BackupTargetName {
 
 #[derive(Debug, Clone, Copy, usage_rs::ValueEnum)]
 pub enum EnvShell {
-    /// The same POSIX code as zsh.
+    /// POSIX code, the same as for zsh.
     Bash,
-    /// The same POSIX code as bash.
+    /// POSIX code, the same as for bash.
     Zsh,
+    /// Code for fish.
     Fish,
+    /// Code for PowerShell.
     Powershell,
 }
 
@@ -194,26 +197,27 @@ pub enum EnvCommand {
     /// Print shell integration code for eval in shell startup.
     #[usage(effect = "read")]
     Init {
-        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
+        /// Shell to write code for. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
     },
     /// Set a managed environment variable alias.
     #[usage(effect = "write")]
     Set {
-        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
+        /// Shell to write code for. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
         #[usage(complete = complete::env_aliases)]
         alias: String,
         /// Value to store and export.
+        #[usage(value_hint = usage_rs::ValueHint::Other)]
         value: String,
     },
     /// Unset a managed environment variable alias.
     #[usage(effect = "destructive")]
     Unset {
-        /// Shell to write code for; bash and zsh get the same code. Defaults to powershell on Windows and bash elsewhere.
+        /// Shell to write code for. Defaults to powershell on Windows and bash elsewhere.
         #[usage(long, value_enum)]
         shell: Option<EnvShell>,
         /// Alias of the variable, as `lum env list` shows it.
@@ -253,6 +257,7 @@ pub enum ToolsCommand {
     /// Install missing tools and update outdated tools.
     #[usage(effect = "write")]
     Sync {
+        /// Show what would change without changing anything.
         #[usage(long)]
         dry_run: bool,
     },
@@ -310,6 +315,7 @@ pub enum AppsCommand {
     /// Install missing apps, update outdated ones and reapply drifted settings.
     #[usage(effect = "write")]
     Sync {
+        /// Show what would change without changing anything.
         #[usage(long)]
         dry_run: bool,
     },
@@ -324,7 +330,7 @@ pub enum AppsCommand {
 
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum ReposCommand {
-    /// Scan a directory tree for Git repositories and report branch and sync status.
+    /// Scan a directory tree for Git repositories, fetch their upstreams, and report branch and sync status.
     Scan(ScanArgs),
     /// Clone, update, and inspect configured mirror repositories.
     Mirror {
@@ -342,24 +348,21 @@ pub enum GitIdCommand {
     #[usage(effect = "write")]
     Init,
     /// Synchronize the machine with the git identity config.
-    #[usage(effect = "write")]
+    #[usage(effect = "destructive")]
     Sync,
-    /// Show status for all configured git identities.
+    /// Show whether each git identity is in sync, or the details of one.
     #[usage(effect = "read")]
-    Status,
+    Status {
+        /// Identity to show in detail, by its name in the git-id config.
+        #[usage(complete = complete::identities)]
+        identity: Option<String>,
+    },
     /// Show which git identity applies to the current directory.
     #[usage(effect = "read")]
     Where,
-    /// Show detailed information about one git identity.
+    /// Print an identity's public key to stdout.
     #[usage(effect = "read")]
-    Info {
-        /// Identity name from the git-id config.
-        #[usage(complete = complete::identities)]
-        identity: String,
-    },
-    /// Print an identity public key to stdout.
-    #[usage(effect = "read")]
-    Pubkey {
+    PublicKey {
         /// Identity name from the git-id config.
         #[usage(complete = complete::identities)]
         identity: String,
@@ -387,15 +390,15 @@ pub enum MirrorCommand {
     #[usage(effect = "write")]
     Sync {
         /// Maximum concurrent git operations.
-        #[usage(short = 'j', long, default = "4")]
-        jobs: usize,
+        #[usage(short = 'j', long, default = "4", value_hint = usage_rs::ValueHint::Other)]
+        jobs: InRange<1>,
     },
     /// Check if local mirrors are up to date with their remotes.
     #[usage(effect = "read")]
     Status {
         /// Maximum concurrent git operations.
-        #[usage(short = 'j', long, default = "4")]
-        jobs: usize,
+        #[usage(short = 'j', long, default = "4", value_hint = usage_rs::ValueHint::Other)]
+        jobs: InRange<1>,
         /// Compare against cached remote refs instead of contacting remotes.
         #[usage(long)]
         offline: bool,
@@ -403,9 +406,9 @@ pub enum MirrorCommand {
     /// Watch mirror repos for upstream changes and send desktop notifications.
     #[usage(effect = "read")]
     Watch {
-        /// Tag to filter repos by. Omit to see guidance.
+        /// Tag of the repos to watch, as `lum repos mirror list` shows it.
         #[usage(complete = complete::mirror_tags)]
-        tag: Option<String>,
+        tag: String,
         /// Number of poll cycles to run. Test/support plumbing; omit for infinite (Ctrl+C to stop).
         #[usage(long, hide)]
         cycles: Option<usize>,
@@ -417,24 +420,24 @@ pub enum YtCommand {
     #[usage(effect = "write")]
     Audio {
         /// YouTube URL(s) to download.
-        #[usage(required = true)]
+        #[usage(required = true, value_hint = usage_rs::ValueHint::Url)]
         urls: Vec<String>,
     },
     /// Download video from YouTube URL(s).
     #[usage(effect = "write")]
     Video {
-        /// Maximum video height (default: 1080).
-        #[usage(long)]
-        height: Option<u32>,
+        /// Maximum video height in pixels.
+        #[usage(long, default = "1080", value_hint = usage_rs::ValueHint::Other)]
+        height: u32,
         /// YouTube URL(s) to download.
-        #[usage(required = true)]
+        #[usage(required = true, value_hint = usage_rs::ValueHint::Url)]
         urls: Vec<String>,
     },
     /// Download an album or playlist from YouTube URL(s).
     #[usage(effect = "write")]
     Album {
         /// YouTube URL(s) to download.
-        #[usage(required = true)]
+        #[usage(required = true, value_hint = usage_rs::ValueHint::Url)]
         urls: Vec<String>,
     },
     /// Print channel RSS feed URL(s) for YouTube video or channel URL(s).
@@ -449,7 +452,7 @@ pub enum YtCommand {
         #[usage(long)]
         videos_only: bool,
         /// YouTube video or channel URL(s). Playlists rejected.
-        #[usage(required = true)]
+        #[usage(required = true, value_hint = usage_rs::ValueHint::Url)]
         urls: Vec<String>,
     },
 }
@@ -461,7 +464,7 @@ pub enum NetCommand {
     On {
         /// Wired interface to use instead of detecting it.
         #[usage(long, complete = complete::wired_interfaces)]
-        iface: Option<String>,
+        interface: Option<String>,
         /// Command to run while shaping is on.
         #[usage(
             value_name = "COMMAND",
@@ -481,22 +484,22 @@ pub enum NetCommand {
     Test {
         /// Wired interface to use instead of detecting it.
         #[usage(long, complete = complete::wired_interfaces)]
-        iface: Option<String>,
+        interface: Option<String>,
         /// Seconds to load the link (5–120).
-        #[usage(long, default = "20")]
-        seconds: u64,
+        #[usage(long, default = "20", value_hint = usage_rs::ValueHint::Other)]
+        seconds: InRange<5, 120>,
     },
 }
 
 #[derive(Debug, usage_rs::Subcommands)]
-pub enum FontCommand {
+pub enum FontsCommand {
     /// List managed fonts and local state.
     #[usage(effect = "read")]
     List,
     /// Install a managed font.
     #[usage(effect = "write")]
     Install {
-        /// Font name, as `lum font list` shows it.
+        /// Font name, as `lum fonts list` shows it.
         #[usage(complete = complete::fonts)]
         font: String,
         /// Reinstall a font that is already installed.
@@ -506,14 +509,14 @@ pub enum FontCommand {
     /// Show where a font installs and whether it is installed.
     #[usage(effect = "read")]
     Status {
-        /// Font name, as `lum font list` shows it.
+        /// Font name, as `lum fonts list` shows it.
         #[usage(complete = complete::fonts)]
         font: String,
     },
     /// Uninstall a managed font.
     #[usage(effect = "destructive")]
     Uninstall {
-        /// Font name, as `lum font list` shows it.
+        /// Font name, as `lum fonts list` shows it.
         #[usage(complete = complete::fonts)]
         font: String,
     },
@@ -528,7 +531,8 @@ pub enum VolCommand {
     #[usage(effect = "write")]
     Set {
         /// Volume level, 0–100.
-        level: u16,
+        #[usage(value_hint = usage_rs::ValueHint::Other)]
+        level: InRange<0, 100>,
     },
     /// Show the current volume.
     #[usage(effect = "read")]
@@ -539,18 +543,60 @@ pub enum VolCommand {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, usage_rs::Subcommands)]
 pub enum DisplayCommand {
-    /// Sharp HiDPI at about the monitor's own size.
+    /// Turn on sharp HiDPI at about the monitor's own size.
     #[usage(effect = "write")]
     On,
-    /// The monitor's plain resolution until you restart or log out: least GPU work, for games.
+    /// Switch to the monitor's plain resolution until you restart or log out: least GPU work, for games.
     #[usage(effect = "write")]
     Off,
-    /// The sRGB color profile, for monitors still on the one macOS made for them. Asks first.
+    /// Switch to the sRGB color profile, for monitors still on the one macOS made for them. Asks first.
     #[usage(effect = "write")]
     Srgb,
     /// Show whether HiDPI is on for each monitor.
     #[usage(effect = "read")]
     Status,
+}
+
+/// A whole number from `MIN` to `MAX`, or of at least `MIN` when `MAX` is left out.
+/// Parsing checks the range, so a number outside it is a usage error, like a word that is
+/// not a number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InRange<const MIN: u64, const MAX: u64 = { u64::MAX }>(pub u64);
+
+impl<const MIN: u64, const MAX: u64> std::str::FromStr for InRange<MIN, MAX> {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        text.parse::<u64>()
+            .ok()
+            .filter(|number| (MIN..=MAX).contains(number))
+            .map(Self)
+            .ok_or_else(|| {
+                if MAX == u64::MAX {
+                    format!("expected a whole number of at least {MIN}")
+                } else {
+                    format!("expected a whole number from {MIN} to {MAX}")
+                }
+            })
+    }
+}
+
+/// The error for a name that is none of `names`. It lists them, so the next try can
+/// pick one.
+pub(crate) fn unknown_name(
+    kind: &str,
+    name: &str,
+    names: impl IntoIterator<Item = impl AsRef<str>>,
+) -> anyhow::Error {
+    let names: Vec<String> = names
+        .into_iter()
+        .map(|known| known.as_ref().to_owned())
+        .collect();
+    if names.is_empty() {
+        anyhow::anyhow!("unknown {kind} {name:?} (none available)")
+    } else {
+        anyhow::anyhow!("unknown {kind} {name:?} (available: {})", names.join(", "))
+    }
 }
 
 #[cfg(test)]
@@ -586,6 +632,17 @@ mod tests {
     }
 
     #[test]
+    fn yt_video_height_defaults_to_1080() {
+        let cli = parse(&["yt", "video", "https://www.youtube.com/watch?v=x"]);
+        match cli.command {
+            Commands::Yt {
+                command: YtCommand::Video { height, .. },
+            } => assert_eq!(height, 1080),
+            _ => panic!("expected yt video"),
+        }
+    }
+
+    #[test]
     fn parses_apps_list() {
         let cli = parse(&["apps", "list"]);
         assert!(matches!(
@@ -601,7 +658,7 @@ mod tests {
         let cli = parse(&[
             "net",
             "on",
-            "--iface",
+            "--interface",
             "enp0s31f6",
             "--",
             "flatpak",
@@ -611,9 +668,9 @@ mod tests {
         ]);
         match cli.command {
             Commands::Net {
-                command: NetCommand::On { iface, command },
+                command: NetCommand::On { interface, command },
             } => {
-                assert_eq!(iface.as_deref(), Some("enp0s31f6"));
+                assert_eq!(interface.as_deref(), Some("enp0s31f6"));
                 assert_eq!(
                     command,
                     ["flatpak", "run", "--branch=master", "com.nvidia.geforcenow"]
@@ -628,9 +685,9 @@ mod tests {
         let cli = parse(&["net", "on", "open", "-W", "-a", "GeForce NOW"]);
         match cli.command {
             Commands::Net {
-                command: NetCommand::On { iface, command },
+                command: NetCommand::On { interface, command },
             } => {
-                assert_eq!(iface, None);
+                assert_eq!(interface, None);
                 assert_eq!(command, ["open", "-W", "-a", "GeForce NOW"]);
             }
             _ => panic!("expected net on"),
@@ -643,7 +700,7 @@ mod tests {
         assert!(matches!(
             cli.command,
             Commands::Net {
-                command: NetCommand::On { iface: None, ref command }
+                command: NetCommand::On { interface: None, ref command }
             } if command.is_empty()
         ));
     }
@@ -655,8 +712,8 @@ mod tests {
             cli.command,
             Commands::Net {
                 command: NetCommand::Test {
-                    iface: None,
-                    seconds: 20
+                    interface: None,
+                    seconds: InRange(20)
                 }
             }
         ));

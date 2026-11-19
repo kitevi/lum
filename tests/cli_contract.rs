@@ -98,7 +98,8 @@ fn help_prints_public_commands_and_hides_internal_ones() {
         .stdout(predicates::str::contains("git-id"))
         .stdout(predicates::str::contains("__completions").not())
         .stdout(predicates::str::contains("__radio_direct_runner").not())
-        .stdout(predicates::str::contains("__git_credential").not());
+        .stdout(predicates::str::contains("__git_credential").not())
+        .stdout(predicates::str::contains("__status_tray").not());
 }
 
 #[test]
@@ -137,8 +138,10 @@ fn radio_rejects_a_removed_youtube_station() {
         .assert()
         .failure()
         .code(1)
-        .stderr(predicates::str::contains("station not found: ytlf"))
-        .stderr(predicates::str::contains("conc  RadCap Musique Concrète"));
+        .stderr(predicates::str::contains(
+            "unknown station \"ytlf\" (available: ",
+        ))
+        .stderr(predicates::str::contains("conc"));
 }
 
 #[test]

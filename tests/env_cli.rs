@@ -58,9 +58,7 @@ fn env_rejects_unknown_aliases() {
         .args(["env", "set", "missing", "value"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains(
-            "unknown environment alias: missing",
-        ));
+        .stderr(predicates::str::contains("unknown alias \"missing\""));
 }
 
 #[test]

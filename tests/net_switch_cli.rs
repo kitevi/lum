@@ -266,11 +266,11 @@ fn on_refuses_another_interface_while_it_is_on() {
     fs::create_dir_all(fake.path("sys/lumifb0")).unwrap();
     fake.leave_record(RECORD);
 
-    fake.lum(&["net", "on", "--iface", "eth1"])
+    fake.lum(&["net", "on", "--interface", "eth1"])
         .assert()
         .failure()
         .stderr(contains("shaping is already on for eth0"));
-    fake.lum(&["net", "on", "--iface", "eth0"])
+    fake.lum(&["net", "on", "--interface", "eth0"])
         .assert()
         .success()
         .stdout(contains("Shaping is already on for eth0."));
@@ -335,7 +335,7 @@ fn iface_completes_with_the_wired_interfaces_only() {
         "--shell",
         "fish",
         "--line",
-        "lum net on --iface ",
+        "lum net on --interface ",
     ])
     .assert()
     .success()

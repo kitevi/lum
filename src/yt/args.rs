@@ -5,7 +5,7 @@ pub fn audio_args() -> Vec<String> {
     args
 }
 
-pub fn video_args(height: Option<u32>) -> Vec<String> {
+pub fn video_args(height: u32) -> Vec<String> {
     let mut args = base_args();
     args.extend(video_specific_args(height));
     args
@@ -76,8 +76,7 @@ fn audio_specific_args() -> Vec<String> {
     ]
 }
 
-fn video_specific_args(height: Option<u32>) -> Vec<String> {
-    let h = height.unwrap_or(1080);
+fn video_specific_args(h: u32) -> Vec<String> {
     let args = vec![
         "--sub-langs".into(),
         "en.*".into(),
@@ -210,8 +209,8 @@ mod tests {
     }
 
     #[test]
-    fn video_args_default_height_is_1080() {
-        let args = video_args(None);
+    fn video_args_cap_height() {
+        let args = video_args(1080);
         let f_idx = args.iter().position(|a| a == "-f").unwrap();
         let format = &args[f_idx + 1];
         assert!(format.contains("height<=1080"));
@@ -219,7 +218,7 @@ mod tests {
 
     #[test]
     fn video_args_custom_height() {
-        let args = video_args(Some(2160));
+        let args = video_args(2160);
         let f_idx = args.iter().position(|a| a == "-f").unwrap();
         let format = &args[f_idx + 1];
         assert!(format.contains("height<=2160"));
@@ -228,14 +227,14 @@ mod tests {
 
     #[test]
     fn video_args_includes_subtitles() {
-        let args = video_args(None);
+        let args = video_args(1080);
         assert!(args.contains(&"--sub-langs".to_string()));
         assert!(args.contains(&"--write-subs".to_string()));
     }
 
     #[test]
     fn video_args_disables_playlist() {
-        let args = video_args(None);
+        let args = video_args(1080);
         assert!(args.contains(&"--no-playlist".to_string()));
     }
 

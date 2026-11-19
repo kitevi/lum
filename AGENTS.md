@@ -11,11 +11,19 @@
 
 Before changing a subsystem, read its local README:
 
-- `src/radio/README.md` for the `lum radio` subcommand.
+- `src/apps/README.md` for the `lum apps` subcommand.
+- `src/backup/README.md` for the `lum backup` subcommand.
+- `src/display/README.md` for the `lum display` subcommand.
+- `src/env/README.md` for the `lum env` subcommand.
+- `src/fonts/README.md` for the `lum fonts` subcommand.
 - `src/git_id/README.md` for the `lum git-id` subcommand.
 - `src/net/README.md` for the `lum net` subcommand.
-- `src/display/README.md` for the `lum display` subcommand.
-- `src/tray/README.md` for the tray icon `lum radio` and `lum display` share.
+- `src/radio/README.md` for the `lum radio` subcommand.
+- `src/repos/README.md` for the `lum repos` subcommand.
+- `src/tools/README.md` for the `lum tools` subcommand.
+- `src/vol/README.md` for the `lum vol` subcommand.
+- `src/yt/README.md` for the `lum yt` subcommand.
+- `src/tray/README.md` for the tray icon `lum radio`, `lum net` and `lum display` share.
 - `xtask/README.md` for repository maintenance tasks and local installation.
 
 Keep `AGENTS.md` policy-level. Put subsystem implementation details in the subsystem README and durable trade-off decisions in ADRs under `docs/adr/`.

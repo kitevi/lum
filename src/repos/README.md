@@ -12,7 +12,7 @@ lum repos mirror init
 lum repos mirror list
 lum repos mirror sync [-j, --jobs N]
 lum repos mirror status [-j, --jobs N] [--offline]
-lum repos mirror watch [TAG]
+lum repos mirror watch <TAG>
 ```
 
 ## Scanner (`repos scan`)
@@ -56,19 +56,17 @@ Maintains shallow (`--depth 1 --no-single-branch`) read-only clones under `~/Doc
 - `branch` defaults to `"main"`.
 - `tags` are optional metadata appended to directory names.
 
+Without a config file, `list`, `sync` and `status` say so, point to `lum repos mirror init` and exit 0. `watch`, which needs a tag from it, fails with the same message.
+
 ### Directory Naming
 
 `<basename>-<branch>[-<tag1>-<tag2>-...]`
 
 Where `basename` is the repo URL's last path segment with `.git` stripped, and `/` in branch names is replaced with `-`.
 
-### Exit Codes for `mirror status`
+### Status
 
-| Code | Meaning |
-|------|---------|
-| 0 | All mirrors up to date |
-| 1 | An error occurred |
-| 2 | At least one mirror is behind |
+`mirror status` prints each mirror as `up to date`, `behind` or `missing` (not cloned yet) and exits 0 whatever it finds. It exits 1 when it could not check a mirror, after trying the rest. `--offline` compares each checkout with its cached `origin/<branch>` instead of asking the remote.
 
 ### Sync Behavior
 
@@ -82,10 +80,9 @@ Where `basename` is the repo URL's last path segment with `.git` stripped, and `
 
 ## Worker Pools
 
-`repos scan`, `mirror sync`, and `mirror status` use a dedicated bounded worker pool per command. `-j` limits concurrent repository operations; zero means one worker, and the pool never exceeds the number of repositories. Workers accept another repository as soon as they finish instead of waiting for a batch.
+`repos scan`, `mirror sync`, and `mirror status` use a dedicated bounded worker pool per command. `-j` limits concurrent repository operations and must be at least 1; the pool never exceeds the number of repositories. Workers accept another repository as soon as they finish instead of waiting for a batch.
 
-Scan results are buffered and printed in path order after all inspections finish. Mirror commands retain per-repository progress and attempt every configured repository before aggregating errors. For mirror status, errors (exit 1) take precedence over behind or missing repositories (exit 2).
-
+Scan results are buffered and printed in path order after all inspections finish. Mirror commands retain per-repository progress and attempt every configured repository before aggregating errors.
 See [ADR 0018](../../docs/adr/0018-repository-worker-pools-use-rayon.md) for the scheduling and reporting trade-offs.
 
 ## Watch (`repos mirror watch`)
@@ -99,7 +96,7 @@ lum repos mirror watch <tag>
 ```
 
 - `<tag>` selects repos by their configured `tags` field. Only repos matching that tag are watched.
-- Without `<tag>`: prints guidance (list tags via `mirror list`, or run `mirror init` if no repos configured) and exits.
+- `<tag>` is required. A tag no configured repo has is an error that lists the tags there are, as `lum repos mirror list` shows them.
 
 ### Behavior
 
@@ -116,4 +113,4 @@ lum repos mirror watch <tag>
 
 ### Notification
 
-Via `notify-rust` crate. Body: `<repo-basename>/<branch> — HEAD changed to <short-sha>`.
+Via the `notify-rust` crate: summary `<repo-basename>/<branch>`, body `HEAD changed to <short-sha>`. The startup notification's summary is `lum repos mirror watch`.

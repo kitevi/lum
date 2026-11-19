@@ -56,11 +56,11 @@ fn font_list_shows_the_managed_catalog() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "list"])
+        .args(["fonts", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("dmca-sans-serif"))
-        .stdout(predicates::str::contains("available"));
+        .stdout(predicates::str::contains("not installed"));
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn font_list_shows_installed_for_present_font_dir() {
     std::fs::create_dir_all(&font_dir).unwrap();
 
     lum_with_env(&home)
-        .args(["font", "list"])
+        .args(["fonts", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("installed"));
@@ -82,7 +82,7 @@ fn font_status_shows_the_path_and_whether_it_is_installed() {
     let font_dir = test_font_dir(&home).join("dmca-sans-serif");
 
     lum_with_env(&home)
-        .args(["font", "status", "dmca-sans-serif"])
+        .args(["fonts", "status", "dmca-sans-serif"])
         .assert()
         .success()
         .stdout(predicates::str::contains(
@@ -92,14 +92,14 @@ fn font_status_shows_the_path_and_whether_it_is_installed() {
             "Path:              {}",
             font_dir.display()
         )))
-        .stdout(predicates::str::contains("Installed:         no"));
+        .stdout(predicates::str::contains("Exists:            no"));
 
     std::fs::create_dir_all(&font_dir).unwrap();
     lum_with_env(&home)
-        .args(["font", "status", "dmca-sans-serif"])
+        .args(["fonts", "status", "dmca-sans-serif"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("Installed:         yes"));
+        .stdout(predicates::str::contains("Exists:            yes"));
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn font_status_rejects_unknown_font() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "status", "nonexistent"])
+        .args(["fonts", "status", "nonexistent"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("unknown font \"nonexistent\""));
@@ -118,7 +118,7 @@ fn font_install_rejects_unknown_font() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "install", "nonexistent"])
+        .args(["fonts", "install", "nonexistent"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("unknown font \"nonexistent\""))
@@ -130,7 +130,7 @@ fn font_uninstall_rejects_unknown_font() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "uninstall", "nonexistent"])
+        .args(["fonts", "uninstall", "nonexistent"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("unknown font \"nonexistent\""));
@@ -141,7 +141,7 @@ fn font_uninstall_bails_if_not_installed() {
     let home = TempDir::new().unwrap();
 
     lum_with_env(&home)
-        .args(["font", "uninstall", "dmca-sans-serif"])
+        .args(["fonts", "uninstall", "dmca-sans-serif"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("not installed"));
@@ -154,7 +154,7 @@ fn font_install_downloads_and_extracts_ttf_files() {
 
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Installed dmca-sans-serif"));
@@ -170,7 +170,7 @@ fn font_install_downloads_and_extracts_ttf_files() {
 
     // Verify list now shows "installed"
     lum_with_env(&home)
-        .args(["font", "list"])
+        .args(["fonts", "list"])
         .assert()
         .success()
         .stdout(predicates::str::contains("installed"));
@@ -184,14 +184,14 @@ fn font_install_bails_if_already_installed_without_force() {
     // Install first time
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .success();
 
     // Second install without --force should fail
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("already installed"))
@@ -206,14 +206,14 @@ fn font_install_force_reinstalls() {
     // Install first time
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .success();
 
     // Force reinstall should succeed
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif", "--force"])
+        .args(["fonts", "install", "dmca-sans-serif", "--force"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Installed dmca-sans-serif"));
@@ -228,13 +228,13 @@ fn font_install_force_preserves_existing_install_when_new_archive_is_bad() {
 
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .success();
 
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &bad_zip_path)
-        .args(["font", "install", "dmca-sans-serif", "--force"])
+        .args(["fonts", "install", "dmca-sans-serif", "--force"])
         .assert()
         .failure();
 
@@ -250,7 +250,7 @@ fn font_install_failure_does_not_leave_installed_marker() {
 
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &bad_zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .failure();
 
@@ -266,13 +266,13 @@ fn font_uninstall_removes_font_directory() {
     // Install first
     lum_with_env(&home)
         .env("LUM_FONT_TEST_ARTIFACT_DMCA_SANS_SERIF", &zip_path)
-        .args(["font", "install", "dmca-sans-serif"])
+        .args(["fonts", "install", "dmca-sans-serif"])
         .assert()
         .success();
 
     // Uninstall
     lum_with_env(&home)
-        .args(["font", "uninstall", "dmca-sans-serif"])
+        .args(["fonts", "uninstall", "dmca-sans-serif"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Uninstalled dmca-sans-serif"));
@@ -283,8 +283,8 @@ fn font_uninstall_removes_font_directory() {
 
     // list should show "available" again
     lum_with_env(&home)
-        .args(["font", "list"])
+        .args(["fonts", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("available"));
+        .stdout(predicates::str::contains("not installed"));
 }

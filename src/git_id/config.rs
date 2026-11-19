@@ -100,7 +100,7 @@ pub fn ensure_private_config_permissions(path: &Path) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(path)?.permissions().mode();
         if mode & 0o077 != 0 {
-            anyhow::bail!("git identity config permissions are not private; run lum git-id sync");
+            anyhow::bail!("git identity config permissions are not private; run `lum git-id sync`");
         }
     }
     Ok(())

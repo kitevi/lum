@@ -8,12 +8,13 @@
 lum git-id config-path
 lum git-id init
 lum git-id sync
-lum git-id status
+lum git-id status [identity]
 lum git-id where
-lum git-id info <identity>
-lum git-id pubkey <identity>
+lum git-id public-key <identity>
 lum git-id files
 ```
+
+Until the config file exists, `sync`, `status` and `where` say so, point to `lum git-id init` and exit 0. `status <identity>` and `public-key` fail with that message, and with the configured names for an identity that is not among them.
 
 ## Config
 
@@ -100,7 +101,7 @@ For each configured identity, sync:
 5. Updates lum-marked sections in global `~/.gitconfig`.
 6. Removes any lum-marked section an older version left in `~/.ssh/config`.
 7. Updates lum-marked sections in `~/.ssh/allowed_signers`.
-8. Backs up and removes orphaned lum-marked artifacts.
+8. Backs up and removes what identities no longer in the config left behind, their lum-marked key pair and Git config, in one archive per identity, and prints each removal with its backup.
 9. Deletes backups older than 30 days.
 
 An identity that fails, for example because of an unmarked key at its path, is left out of the global files. The others still converge, and sync exits non-zero.
@@ -118,7 +119,7 @@ Until that sync, the generated files keep working and `status` reports `needs sy
 
 ## Status and Where
 
-`status` compares each identity's key, Git config, and routing with what `sync` would write, and reports `active` or `needs sync (<reason>)`.
+`status` compares each identity's key, Git config, and routing with what `sync` would write, and reports `active` or `needs sync (<reason>)`. An identity no longer in the config whose lum-marked files are still there shows as `orphaned`, with what `sync` would back up and remove.
 
 `where` asks Git where `user.email` comes from in the current repository, so it reports the identity Git is really using and fails if a setting overrides it. Outside a repository it reports the identity for the managed folder.
 
@@ -155,7 +156,7 @@ Generated files are namespaced with `lum-git-id-`:
 ~/.gitconfig-lum-git-id-<identity>
 ```
 
-`lum git-id pubkey <identity>` prints only the public key to stdout for clipboard piping.
+`lum git-id public-key <identity>` prints only the public key to stdout for clipboard piping.
 
 ## Git Authentication Routing
 

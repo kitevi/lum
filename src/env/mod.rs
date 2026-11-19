@@ -38,8 +38,13 @@ fn init(shell: EnvShell) -> Result<()> {
 }
 
 fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
-    let variable = catalog::variable_for_alias(alias)
-        .with_context(|| format!("unknown environment alias: {alias}"))?;
+    let variable = catalog::variable_for_alias(alias).ok_or_else(|| {
+        crate::cli::unknown_name(
+            "alias",
+            alias,
+            catalog::ALIASES.iter().map(|(name, _)| name),
+        )
+    })?;
     let mut stored = state::read_state()?;
     stored.insert(alias.to_owned(), value.to_owned());
     state::write_state(&stored)?;
@@ -50,13 +55,18 @@ fn set(alias: &str, value: &str, shell: EnvShell) -> Result<()> {
         EnvShell::Fish => println!("set -gx {variable} {}", shell::fish_quote(value)),
         EnvShell::Powershell => println!("$env:{variable} = {}", shell::powershell_quote(value)),
     }
-    eprintln!("[lum env] Set {alias} ({variable})");
+    eprintln!("Set {alias} ({variable})");
     Ok(())
 }
 
 fn unset(alias: &str, shell: EnvShell) -> Result<()> {
-    let variable = catalog::variable_for_alias(alias)
-        .with_context(|| format!("unknown environment alias: {alias}"))?;
+    let variable = catalog::variable_for_alias(alias).ok_or_else(|| {
+        crate::cli::unknown_name(
+            "alias",
+            alias,
+            catalog::ALIASES.iter().map(|(name, _)| name),
+        )
+    })?;
     let mut stored = state::read_state()?;
     stored.remove(alias);
     state::write_state(&stored)?;
@@ -67,7 +77,7 @@ fn unset(alias: &str, shell: EnvShell) -> Result<()> {
             println!("Remove-Item Env:{variable} -ErrorAction SilentlyContinue")
         }
     }
-    eprintln!("[lum env] Unset {alias} ({variable})");
+    eprintln!("Unset {alias} ({variable})");
     Ok(())
 }
 
@@ -79,7 +89,7 @@ struct EnvRow<'a> {
 
 fn list() -> Result<()> {
     let stored = state::read_state()?;
-    println!("Aliases (set with 'lum env set <alias> <value>'):");
+    println!("Aliases (set with `lum env set <alias> <value>`):");
     let mut rows: Vec<EnvRow> = catalog::ALIASES
         .iter()
         .map(|(alias, variable)| EnvRow {

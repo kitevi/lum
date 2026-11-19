@@ -473,7 +473,7 @@ fn info_describes_http_authentication_without_printing_the_password() {
     write_git_id_config(&home, &circle_touch_config(&home, "TOP-SECRET", Some(true)));
 
     lum_with_home(&home)
-        .args(["git-id", "info", "circletouch"])
+        .args(["git-id", "status", "circletouch"])
         .assert()
         .success()
         .stdout(predicates::str::contains(
@@ -770,12 +770,43 @@ fn every_orphaned_identity_gets_its_own_private_backup() {
     let private_key = std::fs::read_to_string(home.path().join(".ssh/lum-git-id-gone2")).unwrap();
 
     write_identities(&home, &[keep]);
-    sync_git_ids(&home);
+    std::fs::write(
+        home.path().join(".ssh/lum-git-id-mine.pub"),
+        "ssh-ed25519 MINE\n",
+    )
+    .unwrap();
+    let status = |expected: &str| {
+        lum_with_home(&home)
+            .args(["git-id", "status"])
+            .assert()
+            .success()
+            .stdout(expected.to_owned());
+    };
+    status(
+        "keep  active\n\
+         gone1  orphaned (sync backs up and removes its key pair and git config)\n\
+         gone2  orphaned (sync backs up and removes its key pair and git config)\n",
+    );
+    assert!(home.path().join(".ssh/lum-git-id-gone1").exists());
+    sync_command(&home)
+        .args(["git-id", "sync"])
+        .assert()
+        .success()
+        .stdout(
+            predicates::str::contains(
+                "Removed the key pair and git config of gone1, an identity no longer in the config. Backup: ",
+            )
+            .and(predicates::str::contains("of gone2, an identity no longer")),
+        );
+    status("keep  active\n");
+    assert!(home.path().join(".ssh/lum-git-id-mine.pub").exists());
 
     let mut recovered = std::collections::BTreeMap::new();
+    let mut archives = 0;
     let backups = home.path().join(".local/share/lum/git-id/backups");
     for entry in std::fs::read_dir(&backups).unwrap() {
         let path = entry.unwrap().path();
+        archives += 1;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -796,6 +827,7 @@ fn every_orphaned_identity_gets_its_own_private_backup() {
         }
     }
 
+    assert_eq!(archives, 2, "one backup per orphaned identity");
     assert_eq!(
         recovered.keys().map(String::as_str).collect::<Vec<_>>(),
         [
@@ -863,7 +895,7 @@ fn dotted_identity_names_sync_and_find_their_keys() {
         .stdout(predicates::str::contains("acme.other  active"));
     for name in ["acme.corp", "acme.other"] {
         lum_with_home(&home)
-            .args(["git-id", "pubkey", name])
+            .args(["git-id", "public-key", name])
             .assert()
             .success()
             .stdout(predicates::str::contains(format!(
@@ -1067,7 +1099,7 @@ fn domains_must_be_plain_hosts() {
     ] {
         write_identities(&home, &[ssh_identity("work", domain, &folder)]);
         lum_with_home(&home)
-            .args(["git-id", "info", "work"])
+            .args(["git-id", "status", "work"])
             .assert()
             .failure()
             .stderr(predicates::str::contains("domain must be"));
@@ -1082,7 +1114,7 @@ fn domains_must_be_plain_hosts() {
     ] {
         write_identities(&home, &[ssh_identity("work", domain, &folder)]);
         lum_with_home(&home)
-            .args(["git-id", "info", "work"])
+            .args(["git-id", "status", "work"])
             .assert()
             .success()
             .stdout(predicates::str::contains(format!("Domain:   {domain}\n")));
@@ -1096,7 +1128,7 @@ fn uppercase_domains_keep_working_and_get_the_https_rewrite() {
     write_identities(&home, &[ssh_identity("work", "GIT.Invalid", &folder)]);
 
     lum_with_home(&home)
-        .args(["git-id", "info", "work"])
+        .args(["git-id", "status", "work"])
         .assert()
         .success()
         .stdout(predicates::str::contains("Domain:   git.invalid\n"));
@@ -1128,7 +1160,7 @@ fn emails_must_be_safe_in_allowed_signers() {
         identity["email"] = email.into();
         write_identities(&home, &[identity]);
         lum_with_home(&home)
-            .args(["git-id", "info", "work"])
+            .args(["git-id", "status", "work"])
             .assert()
             .failure()
             .stderr(predicates::str::contains("email must not contain"));
@@ -1146,7 +1178,7 @@ fn unknown_config_fields_are_rejected_without_echoing_values() {
     });
     write_identities(&home, &[identity]);
     lum_with_home(&home)
-        .args(["git-id", "info", "work"])
+        .args(["git-id", "status", "work"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("authentification"))
@@ -1158,7 +1190,7 @@ fn unknown_config_fields_are_rejected_without_echoing_values() {
     });
     write_identities(&home, &[identity]);
     lum_with_home(&home)
-        .args(["git-id", "info", "work"])
+        .args(["git-id", "status", "work"])
         .assert()
         .failure()
         .stderr(predicates::str::contains("password"))
@@ -1750,7 +1782,7 @@ fn where_says_when_it_is_not_in_a_repository() {
 }
 
 #[test]
-fn pubkey_prints_only_the_key_and_paths_lists_the_files_sync_writes() {
+fn public_key_prints_only_the_key_and_paths_lists_the_files_sync_writes() {
     let home = TempDir::new().unwrap();
     write_identities(
         &home,
@@ -1762,15 +1794,15 @@ fn pubkey_prints_only_the_key_and_paths_lists_the_files_sync_writes() {
     );
 
     lum_with_home(&home)
-        .args(["git-id", "pubkey", "work"])
+        .args(["git-id", "public-key", "work"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("run lum git-id sync"));
+        .stderr(predicates::str::contains("run `lum git-id sync`"));
 
     sync_git_ids(&home);
     let public_key = std::fs::read_to_string(home.path().join(".ssh/lum-git-id-work.pub")).unwrap();
     lum_with_home(&home)
-        .args(["git-id", "pubkey", "work"])
+        .args(["git-id", "public-key", "work"])
         .assert()
         .success()
         .stdout(public_key);
@@ -1826,4 +1858,39 @@ fn real_keys_sign_and_verify_commits_in_managed_folders() {
         .assert()
         .success()
         .stdout("work <work@example.com> G\n");
+}
+
+#[test]
+fn commands_without_a_config_point_to_init() {
+    let home = TempDir::new().unwrap();
+    for command in ["sync", "status", "where"] {
+        lum_with_home(&home)
+            .args(["git-id", command])
+            .assert()
+            .success()
+            .stdout(predicates::str::contains("Run `lum git-id init`"));
+    }
+    for command in ["status", "public-key"] {
+        lum_with_home(&home)
+            .args(["git-id", command, "work"])
+            .assert()
+            .code(1)
+            .stderr(predicates::str::contains("Run `lum git-id init`"));
+    }
+}
+
+#[test]
+fn an_unknown_identity_fails_with_the_configured_names() {
+    let home = TempDir::new().unwrap();
+    let folder = home.path().join("Work");
+    write_identities(&home, &[ssh_identity("work", "git.invalid", &folder)]);
+    for command in ["status", "public-key"] {
+        lum_with_home(&home)
+            .args(["git-id", command, "nope"])
+            .assert()
+            .code(1)
+            .stderr(predicates::str::contains(
+                "unknown identity \"nope\" (available: work)",
+            ));
+    }
 }

@@ -23,8 +23,8 @@ pub fn run(command: ToolsCommand) -> Result<()> {
 
 fn list() -> Result<()> {
     println!(
-        "{:<18} {:<12} {:<12} DESCRIPTION",
-        "TOOL", "BINARY", "STATE"
+        "{:<18} {:<12} {:<14} {:<10} DESCRIPTION",
+        "TOOL", "BINARY", "STATE", "VERSION"
     );
     for tool in catalog::CATALOG {
         let status = state::local_status(tool)?;
@@ -35,11 +35,15 @@ fn list() -> Result<()> {
         } else if status.exists {
             "unmanaged"
         } else {
-            "available"
+            "not installed"
         };
         println!(
-            "{:<18} {:<12} {:<12} {}",
-            tool.name, tool.binary, label, tool.description
+            "{:<18} {:<12} {:<14} {:<10} {}",
+            tool.name,
+            tool.binary,
+            label,
+            status.effective_version().unwrap_or("-"),
+            tool.description
         );
     }
     Ok(())
@@ -77,7 +81,7 @@ fn install_cmd(tool: &str, force: bool) -> Result<()> {
     }
     if status.exists && status.managed && !force {
         anyhow::bail!(
-            "{} is already installed at {}; use 'lum tools update {}' or rerun with --force",
+            "{} is already installed at {}; use `lum tools update {}` or rerun with --force",
             spec.name,
             status.path.display(),
             spec.name
@@ -99,7 +103,7 @@ fn update_cmd(tool: &str, force: bool) -> Result<()> {
     let status = state::local_status(spec)?;
     if !status.managed {
         anyhow::bail!(
-            "{} is not installed; use 'lum tools install {}' first",
+            "{} is not installed; use `lum tools install {}` first",
             spec.name,
             spec.name
         );

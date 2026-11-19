@@ -31,10 +31,6 @@ const LOAD_URLS: [&str; 3] = [
 ];
 
 pub(super) fn run(platform: &dyn Platform, requested: Option<&str>, seconds: u64) -> Result<()> {
-    ensure!(
-        (5..=120).contains(&seconds),
-        "--seconds must be between 5 and 120"
-    );
     let iface = pick(platform, requested)?;
     let shaping = load_record()?.is_some_and(|record| platform.is_applied(&record));
     println!(
@@ -96,7 +92,7 @@ pub(super) fn run(platform: &dyn Platform, requested: Option<&str>, seconds: u64
         let added = loaded - idle;
         let level = bufferbloat(added);
         let hint = if level != "low" && !shaping {
-            " 'lum net on' shapes downloads to keep it low."
+            " `lum net on` shapes downloads to keep it low."
         } else {
             ""
         };

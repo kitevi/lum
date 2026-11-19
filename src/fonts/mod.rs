@@ -5,26 +5,26 @@ mod uninstall;
 
 use anyhow::Result;
 
-use crate::cli::FontCommand;
+use crate::cli::FontsCommand;
 
-pub fn run(command: FontCommand) -> Result<()> {
+pub fn run(command: FontsCommand) -> Result<()> {
     match command {
-        FontCommand::List => list(),
-        FontCommand::Install { font, force } => install_cmd(&font, force),
-        FontCommand::Status { font } => status_cmd(&font),
-        FontCommand::Uninstall { font } => uninstall_cmd(&font),
+        FontsCommand::List => list(),
+        FontsCommand::Install { font, force } => install_cmd(&font, force),
+        FontsCommand::Status { font } => status_cmd(&font),
+        FontsCommand::Uninstall { font } => uninstall_cmd(&font),
     }
 }
 
 fn list() -> Result<()> {
-    println!("{:<18} {:<12} DESCRIPTION", "FONT", "STATE");
+    println!("{:<18} {:<14} DESCRIPTION", "FONT", "STATE");
     for font in catalog::CATALOG {
         let label = if paths::font_install_dir(font)?.exists() {
             "installed"
         } else {
-            "available"
+            "not installed"
         };
-        println!("{:<18} {:<12} {}", font.name, label, font.description);
+        println!("{:<18} {:<14} {}", font.name, label, font.description);
     }
     Ok(())
 }
@@ -36,7 +36,7 @@ fn status_cmd(font: &str) -> Result<()> {
     println!("Description:       {}", spec.description);
     println!("Path:              {}", dir.display());
     println!(
-        "Installed:         {}",
+        "Exists:            {}",
         if dir.exists() { "yes" } else { "no" }
     );
     Ok(())
