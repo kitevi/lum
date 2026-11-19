@@ -25,6 +25,9 @@ pub(crate) struct BackupTarget {
     pub(crate) path: &'static str,
     pub(crate) allowed_os: &'static [&'static str],
     pub(crate) backup_prefix: &'static str,
+    /// Command to run before archiving, found on PATH. Its job is to refresh
+    /// files inside the target that something else owns.
+    pub(crate) pre_command: Option<&'static str>,
 }
 
 pub(crate) const BIO: BackupTarget = BackupTarget {
@@ -32,6 +35,9 @@ pub(crate) const BIO: BackupTarget = BackupTarget {
     path: ".bio",
     allowed_os: &["macos", "linux"],
     backup_prefix: ".bio.backup-",
+    // ~/.bio/install/Brewfile only changes when brdump runs, so archiving
+    // without it would upload a package list from some earlier machine state.
+    pre_command: Some("brdump"),
 };
 
 /// ROMs, with the saves and save states mGBA keeps beside each ROM.
@@ -40,6 +46,8 @@ pub(crate) const ROMS: BackupTarget = BackupTarget {
     path: crate::paths::ROMS_FOLDER,
     allowed_os: &["macos", "linux", "windows"],
     backup_prefix: ".roms.backup-",
+    // Emulators write saves as they go; nothing outside needs to run first.
+    pre_command: None,
 };
 
 impl BackupTarget {

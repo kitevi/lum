@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 mod archive;
+mod pre_command;
 mod restore;
 mod target;
 mod upload;
@@ -46,6 +47,13 @@ fn upload_target(target: target::BackupTarget) -> Result<()> {
         target.name,
         target_path.display()
     );
+
+    if let Some(program) = target.pre_command
+        && let Some(path) = pre_command::find(program)
+    {
+        println!("{} - Running {program}...", timestamp());
+        pre_command::run(&path)?;
+    }
 
     let archive_file = tempfile::Builder::new()
         .prefix(&format!("{}-backup-", target.name))
