@@ -79,6 +79,12 @@ const STATIONS: &[Station] = &[
         url: "https://ice1.somafm.com/n5md-128-mp3",
         tags: &["electronic", "idm"],
     },
+    Station {
+        code: "blkdm",
+        name: "RadCap Black Death Metal",
+        url: "http://79.111.14.76:8004/blackdeath",
+        tags: &["blackened death", "metal"],
+    },
 ];
 
 pub const fn all() -> &'static [Station] {
@@ -140,7 +146,7 @@ mod tests {
             codes,
             [
                 "concr", "exper", "impro", "avant", "minim", "drone", "rites", "space", "focus",
-                "field", "hydro", "nfive"
+                "field", "hydro", "nfive", "blkdm"
             ]
         );
     }
@@ -164,7 +170,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len() - 1);
         assert_eq!(eligible.first().map(|station| station.code), Some("exper"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("nfive"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("blkdm"));
         assert!(eligible.iter().all(|station| station.code != "concr"));
     }
 
@@ -181,7 +187,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len());
         assert_eq!(eligible.first().map(|station| station.code), Some("concr"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("nfive"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("blkdm"));
     }
 
     #[test]
@@ -198,7 +204,7 @@ mod tests {
 
         assert_eq!(observed_len, eligible.len());
         assert_eq!(first.map(|station| station.code), Some("exper"));
-        assert_eq!(last.map(|station| station.code), Some("nfive"));
+        assert_eq!(last.map(|station| station.code), Some("blkdm"));
     }
 
     #[test]
