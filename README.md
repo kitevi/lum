@@ -314,8 +314,10 @@ cargo build --release
 For local development installs in this repository, use:
 
 ```sh
-cargo local-install
+cargo local-install   # or: make install
 ```
+
+`make help` lists shortcuts for the other common cargo commands.
 
 ## License
 

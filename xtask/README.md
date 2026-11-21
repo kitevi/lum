@@ -10,6 +10,8 @@ Canonical command:
 cargo local-install
 ```
 
+`make install` runs the same command. The root `Makefile` only shortens common cargo commands (`make help` lists them); nothing may depend on it, since Windows has no `make` by default.
+
 The repo-local Cargo alias runs:
 
 ```sh
