@@ -9,7 +9,7 @@
 - `lum radio random` starts a random built-in station, skipping the current one.
 - `lum radio status` prints the remembered playback state: `Radio: playing`, `Radio: paused`, or `Radio: stopped`.
 - `lum radio stop` stops playback and removes the tray.
-- Station codes are four lowercase alphanumeric characters, unique within the catalog and stable once published.
+- Station codes are five lowercase letters, unique within the catalog and stable once published.
 - Listings are one aligned row per station: `code  name  tag, tag`.
 
 ## Station Catalog
@@ -108,7 +108,7 @@ They drive the real ffplay spawn path against a local fixture server that drops,
 Manual live-stream testing requires `ffplay`:
 
 ```sh
-cargo run -- radio play dron
+cargo run -- radio play space
 cargo run -- radio status
 cargo run -- radio stop
 ```
@@ -116,10 +116,10 @@ cargo run -- radio stop
 Pausing is covered by ordinary unit tests (`Playback`, and a supervisor that must never count a pause as a failure) plus an opt-in probe in the same `LUM_RADIO_PLAYBACK_TESTS=1` set, which drives a real ffplay through pause/resume cycles. The tray itself needs a desktop session with a tray host, so it is verified by hand:
 
 ```sh
-cargo run -- radio play dron
-cargo run -- radio status   # Radio: playing dron SomaFM Drone Zone
+cargo run -- radio play space
+cargo run -- radio status   # Radio: playing space SomaFM Deep Space One
 # A tray icon appears. Click its "Stop ..." item: audio stops and the item reads "Play ...".
-cargo run -- radio status   # Radio: paused dron SomaFM Drone Zone
+cargo run -- radio status   # Radio: paused space SomaFM Deep Space One
 # Click again: audio returns.
 # Pick another station under "Stations": the icon is replaced and status names the new station.
 # "Random station" does the same with a station other than the current one.

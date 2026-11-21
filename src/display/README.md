@@ -68,7 +68,7 @@ Picking the modes, the size difference, the size list, the file entries, which m
 
 ```sh
 cargo run -- display off     # a monitor icon appears; its menu reads "HiDPI off: ..."
-cargo run -- radio play dron # within 10 s the monitor joins the radio's icon, its line above the radio's items
+cargo run -- radio play space # within 10 s the monitor joins the radio's icon, its line above the radio's items
 cargo run -- radio stop      # the monitor icon comes back by itself
 cargo run -- display on      # within 10 s the icon goes
 ```

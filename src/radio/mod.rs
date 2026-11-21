@@ -520,7 +520,7 @@ mod tests {
     /// failures do, and `StreamRetry` has its own tests for those.
     #[test]
     fn pausing_is_not_a_stream_failure() {
-        let station = *stations::find("dron").expect("catalog has dron");
+        let station = *stations::find("drone").expect("catalog has drone");
         let playback = Arc::new(Playback::default());
         let (started_tx, started) = std::sync::mpsc::channel();
         let (kill_tx, killed) = std::sync::mpsc::channel::<()>();
@@ -564,7 +564,7 @@ mod tests {
         let message = error.to_string();
 
         assert!(message.starts_with("unknown station \"nope\" (available: "));
-        assert!(message.contains("conc"));
+        assert!(message.contains("concr"));
     }
 
     #[test]
@@ -579,9 +579,9 @@ mod tests {
     #[test]
     fn random_station_draws_from_the_catalog_and_skips_the_remembered_one() {
         for _ in 0..200 {
-            let station = random_station(Some("conc".into())).expect("catalog has stations");
+            let station = random_station(Some("concr".into())).expect("catalog has stations");
 
-            assert_ne!(station.code, "conc");
+            assert_ne!(station.code, "concr");
             assert!(stations::all().iter().any(|s| s.code == station.code));
         }
     }

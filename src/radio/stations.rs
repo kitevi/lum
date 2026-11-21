@@ -8,85 +8,73 @@ pub struct Station {
 
 const STATIONS: &[Station] = &[
     Station {
-        code: "conc",
+        code: "concr",
         name: "RadCap Musique Concrète",
         url: "http://213.141.131.10:8000/musiqueconcrete",
         tags: &["concrète", "acousmatic", "collage"],
     },
     Station {
-        code: "expr",
+        code: "exper",
         name: "RadCap Experimental",
         url: "http://79.111.119.111:8004/experimentalmusic",
         tags: &["experimental"],
     },
     Station {
-        code: "impr",
+        code: "impro",
         name: "RadCap Free Improvisation",
-        url: "http://79.111.119.111:8000/avantgardejazz",
-        tags: &["free improv", "avant-garde jazz"],
+        url: "http://79.120.12.130:8004/freeimprovisation",
+        tags: &["free improv"],
     },
     Station {
-        code: "cavt",
+        code: "avant",
         name: "RadCap Classical Avant-garde",
         url: "http://213.141.131.10:8004/classavant",
         tags: &["avant-garde", "classical", "modernist"],
     },
     Station {
-        code: "mini",
+        code: "minim",
         name: "RadCap Minimalism",
         url: "http://213.141.131.10:8000/minimalism",
         tags: &["minimalism"],
     },
     Station {
-        code: "dron",
-        name: "SomaFM Drone Zone",
-        url: "https://ice1.somafm.com/dronezone-128-mp3",
-        tags: &["drone", "ambient"],
-    },
-    Station {
-        code: "rdrn",
+        code: "drone",
         name: "RadCap Drone Ambient",
         url: "http://79.111.119.111:8000/droneambient",
         tags: &["drone", "ambient"],
     },
     Station {
-        code: "dark",
-        name: "SomaFM Dark Zone",
-        url: "https://ice1.somafm.com/darkzone-128-mp3",
-        tags: &["dark ambient", "soundscape"],
-    },
-    Station {
-        code: "ritl",
+        code: "rites",
         name: "RadCap Dark/Ritual Ambient",
         url: "http://79.120.39.202:8000/darkambient",
         tags: &["dark ambient", "ritual"],
     },
     Station {
-        code: "dsp1",
+        code: "space",
         name: "SomaFM Deep Space One",
         url: "https://ice1.somafm.com/deepspaceone-128-mp3",
         tags: &["space", "ambient"],
     },
     Station {
-        code: "slow",
+        code: "focus",
         name: "NTS Slow Focus",
         url: "https://stream-mixtape-geo.ntslive.net/mixtape",
         tags: &["experimental", "slow"],
     },
     Station {
-        code: "fiel",
+        code: "field",
         name: "NTS Field Recordings",
         url: "https://stream-mixtape-geo.ntslive.net/mixtape23",
         tags: &["field recordings"],
     },
     Station {
-        code: "pond",
+        code: "hydro",
         name: "Wave Farm Pond Station",
         url: "https://audio.wavefarm.org/pondstation.mp3",
         tags: &["field recordings", "hydrophone", "live"],
     },
     Station {
-        code: "n5md",
+        code: "nfive",
         name: "SomaFM n5MD Radio",
         url: "https://ice1.somafm.com/n5md-128-mp3",
         tags: &["electronic", "idm"],
@@ -131,7 +119,7 @@ pub fn format_listing() -> String {
         .iter()
         .map(|station| {
             format!(
-                "{:<4}  {:<width$}  {}",
+                "{:<5}  {:<width$}  {}",
                 station.code,
                 station.name,
                 station.tags.join(", ")
@@ -151,8 +139,8 @@ mod tests {
         assert_eq!(
             codes,
             [
-                "conc", "expr", "impr", "cavt", "mini", "dron", "rdrn", "dark", "ritl", "dsp1",
-                "slow", "fiel", "pond", "n5md",
+                "concr", "exper", "impro", "avant", "minim", "drone", "rites", "space", "focus",
+                "field", "hydro", "nfive"
             ]
         );
     }
@@ -160,24 +148,24 @@ mod tests {
     #[test]
     fn finds_station_by_exact_code() {
         assert_eq!(
-            find("conc").unwrap().url,
+            find("concr").unwrap().url,
             "http://213.141.131.10:8000/musiqueconcrete"
         );
         assert_eq!(
-            find("pond").unwrap().url,
+            find("hydro").unwrap().url,
             "https://audio.wavefarm.org/pondstation.mp3"
         );
-        assert!(find("CONC").is_none());
+        assert!(find("CONCR").is_none());
     }
 
     #[test]
     fn eligible_stations_drop_only_the_remembered_station() {
-        let eligible = eligible_stations(Some("conc"));
+        let eligible = eligible_stations(Some("concr"));
 
         assert_eq!(eligible.len(), all().len() - 1);
-        assert_eq!(eligible.first().map(|station| station.code), Some("expr"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("n5md"));
-        assert!(eligible.iter().all(|station| station.code != "conc"));
+        assert_eq!(eligible.first().map(|station| station.code), Some("exper"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("nfive"));
+        assert!(eligible.iter().all(|station| station.code != "concr"));
     }
 
     #[test]
@@ -192,13 +180,13 @@ mod tests {
         let eligible = eligible_stations(None);
 
         assert_eq!(eligible.len(), all().len());
-        assert_eq!(eligible.first().map(|station| station.code), Some("conc"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("n5md"));
+        assert_eq!(eligible.first().map(|station| station.code), Some("concr"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("nfive"));
     }
 
     #[test]
     fn choose_station_draws_from_the_pool_with_the_injected_index() {
-        let eligible = eligible_stations(Some("conc"));
+        let eligible = eligible_stations(Some("concr"));
         let mut observed_len = 0;
 
         let first = choose_station(&eligible, |len| {
@@ -209,8 +197,8 @@ mod tests {
         let last = choose_station(&eligible, |_| last);
 
         assert_eq!(observed_len, eligible.len());
-        assert_eq!(first.map(|station| station.code), Some("expr"));
-        assert_eq!(last.map(|station| station.code), Some("n5md"));
+        assert_eq!(first.map(|station| station.code), Some("exper"));
+        assert_eq!(last.map(|station| station.code), Some("nfive"));
     }
 
     #[test]
@@ -220,8 +208,8 @@ mod tests {
 
     #[test]
     fn retained_stations_keep_their_tags() {
-        assert!(find("dron").unwrap().tags.contains(&"ambient"));
-        assert!(find("pond").unwrap().tags.contains(&"live"));
+        assert!(find("drone").unwrap().tags.contains(&"ambient"));
+        assert!(find("hydro").unwrap().tags.contains(&"live"));
     }
 
     #[test]

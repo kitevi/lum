@@ -123,7 +123,7 @@ fn radio_list_shows_station_tags() {
         .args(["radio", "list"])
         .assert()
         .success()
-        .stdout(predicates::str::contains("conc  RadCap Musique Concrète"))
+        .stdout(predicates::str::contains("concr  RadCap Musique Concrète"))
         .stdout(predicates::str::contains("concrète, acousmatic, collage"))
         .stdout(predicates::str::contains("Play a random").not())
         .stdout(predicates::str::contains("ytlf").not())
@@ -141,7 +141,7 @@ fn radio_rejects_a_removed_youtube_station() {
         .stderr(predicates::str::contains(
             "unknown station \"ytlf\" (available: ",
         ))
-        .stderr(predicates::str::contains("conc"));
+        .stderr(predicates::str::contains("concr"));
 }
 
 #[test]

@@ -24,7 +24,7 @@ fn write_config(config: &TempDir, name: &str, content: &serde_json::Value) {
 fn catalog_names_complete_with_their_descriptions() {
     let config = TempDir::new().unwrap();
     for (line, candidate) in [
-        ("lum radio play ", "dron\tSomaFM Drone Zone"),
+        ("lum radio play ", "drone\tRadCap Drone Ambient"),
         ("lum apps install ", "mgba\tGame Boy Advance emulator"),
         ("lum fonts uninstall ", "dmca-sans-serif\t"),
         ("lum env unset ", "baro\tBARO_DB_URL"),
