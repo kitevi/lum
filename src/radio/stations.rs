@@ -85,6 +85,18 @@ const STATIONS: &[Station] = &[
         url: "http://79.111.14.76:8004/blackdeath",
         tags: &["blackened death", "metal"],
     },
+    Station {
+        code: "blakv",
+        name: "RadCap Avant-garde Black Metal",
+        url: "http://79.120.39.202:8004/avantblackmet",
+        tags: &["avant-garde black", "metal"],
+    },
+    Station {
+        code: "black",
+        name: "RadCap Black Metal",
+        url: "http://79.120.77.11:8004/blackmetal",
+        tags: &["black metal"],
+    },
 ];
 
 pub const fn all() -> &'static [Station] {
@@ -146,7 +158,7 @@ mod tests {
             codes,
             [
                 "concr", "exper", "impro", "avant", "minim", "drone", "rites", "space", "focus",
-                "field", "hydro", "nfive", "blkdm"
+                "field", "hydro", "nfive", "blkdm", "blakv", "black"
             ]
         );
     }
@@ -170,7 +182,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len() - 1);
         assert_eq!(eligible.first().map(|station| station.code), Some("exper"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("blkdm"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("black"));
         assert!(eligible.iter().all(|station| station.code != "concr"));
     }
 
@@ -187,7 +199,7 @@ mod tests {
 
         assert_eq!(eligible.len(), all().len());
         assert_eq!(eligible.first().map(|station| station.code), Some("concr"));
-        assert_eq!(eligible.last().map(|station| station.code), Some("blkdm"));
+        assert_eq!(eligible.last().map(|station| station.code), Some("black"));
     }
 
     #[test]
@@ -204,7 +216,7 @@ mod tests {
 
         assert_eq!(observed_len, eligible.len());
         assert_eq!(first.map(|station| station.code), Some("exper"));
-        assert_eq!(last.map(|station| station.code), Some("blkdm"));
+        assert_eq!(last.map(|station| station.code), Some("black"));
     }
 
     #[test]
