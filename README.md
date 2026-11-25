@@ -180,9 +180,13 @@ Available apps:
 
 | App | Description | Settings lum keeps |
 | --- | --- | --- |
+| `metalsharp` | Windows games through Wine (MetalSharp's FEX build), macOS on Apple Silicon only | None: its settings live in `~/.metalsharp` |
 | `mgba` | Game Boy Advance emulator | `updateAutoCheck=0`, since lum does the updating |
 | `octomac` | OctoWoW launcher (OctoMacLauncher), macOS on Apple Silicon only | None: its settings live in user defaults |
 | `snes9x` | Super Nintendo emulator | On Windows, saves go to `~\ROMs` instead of the program folder |
+
+> [!WARNING]
+> **`metalsharp` will break.** lum installs MetalSharp's FEX build by its file name, `MetalSharp-<version>-arm64-FEX.dmg`, and upstream plans to merge the FEX and x86_64 builds into one download ([metalsharp/MetalSharp#837](https://github.com/metalsharp/MetalSharp/issues/837)). Once a release ships without that file, `lum apps install`, `update` and `sync` fail at metalsharp with `GitHub release missing asset` until lum's catalog points at the new download. `sync` goes no further, and metalsharp is first in the list, so no app syncs in the meantime.
 
 Where things go:
 
@@ -208,7 +212,7 @@ Notes:
 - lum sets only the settings it lists, and touches only those lines of the config file. Everything else (controls, BIOS paths, recent games) stays yours. `lum apps sync` puts a changed lum setting back.
 - lum does not update an app, or change its settings, while it is running. Quit it first.
 - On Linux the AppImage is unpacked, so it runs without FUSE. Snes9x's AppImage still needs glibmm 2.4 from the system; on Arch, `sudo pacman -S glibmm`.
-- An app shows up only on the systems it is built for: `octomac` is not listed, synced or completed on Linux and Windows. lum's copy of OctoMacLauncher opens without the Gatekeeper steps its release notes describe. If you update it from its own Play page instead, lum's recorded version lags until the next `lum apps sync`.
+- An app shows up only on the systems it is built for: `metalsharp` and `octomac` are not listed, synced or completed on Linux and Windows. lum's copy of OctoMacLauncher opens without the Gatekeeper steps its release notes describe. Both also update themselves: after you update OctoMacLauncher from its Play page, or MetalSharp from its own updater, lum's recorded version lags until the next `lum apps sync`, which downloads that release again (1.5 GB for MetalSharp) and installs it over the app.
 - `lum apps uninstall` removes the app and its launcher, and keeps its saves. Its settings stay too, except snes9x's on Windows, which live in its program folder.
 - Keep ROMs in `~/ROMs`: `lum backup create roms` backs them up with their saves, and `lum backup restore roms <code>` restores them on another machine. mGBA saves beside each ROM everywhere, and so does snes9x on Linux; on Windows lum points snes9x's saves at `~\ROMs`. Snes9x on macOS always saves to `~/Library/Application Support/Snes9x`, which that backup does not cover. Quit the emulator first.
 

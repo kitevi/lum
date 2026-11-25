@@ -92,6 +92,40 @@ pub(crate) enum Value {
 
 const CATALOG: &[AppSpec] = &[
     AppSpec {
+        name: "metalsharp",
+        title: "MetalSharp",
+        description: "Windows games through Wine, FEX build",
+        source: Source::GitHub {
+            owner: "metalsharp",
+            repo: "MetalSharp",
+        },
+        // WARNING: this breaks once upstream ships its FEX and x86_64 builds as
+        // one download, as https://github.com/metalsharp/MetalSharp/issues/837
+        // plans. A release without MetalSharp-<version>-arm64-FEX.dmg fails
+        // install, update and sync, and sync goes no further. Point `asset` at
+        // the combined download then, and drop the note below and the warnings
+        // in README.md and src/apps/README.md.
+        //
+        // The FEX build only: its Wine is native Arm64 and runs x86 code through
+        // FEX rather than Rosetta. The x86_64 build is the same MetalSharp.app
+        // (com.metalsharp.app), so the two cannot sit side by side. MetalSharp
+        // keeps its settings, Wine runtime and prefixes in ~/.metalsharp, and
+        // writes nothing inside its bundle.
+        builds: &[Build {
+            os: "macos",
+            arch: &["aarch64"],
+            asset: "MetalSharp-{version}-arm64-FEX.dmg",
+            package: Package::Bundle {
+                bundle: "MetalSharp.app",
+            },
+            process: "MetalSharp",
+            settings: None,
+            note: Some(
+                "lum installs MetalSharp's FEX build, MetalSharp-<version>-arm64-FEX.dmg, which upstream plans to merge with its x86_64 build into one download (https://github.com/metalsharp/MetalSharp/issues/837). Once a release ships without that file, `lum apps install`, `update` and `sync` fail at metalsharp, and `sync` goes no further, until lum's catalog points at the new download.",
+            ),
+        }],
+    },
+    AppSpec {
         name: "mgba",
         title: "mGBA",
         description: "Game Boy Advance emulator",
@@ -400,6 +434,17 @@ mod tests {
     }
 
     #[test]
+    fn metalsharp_has_only_its_fex_build_for_apple_silicon_macs() {
+        assert_eq!(
+            asset("metalsharp", "macos", "aarch64"),
+            Some("MetalSharp-{version}-arm64-FEX.dmg")
+        );
+        assert_eq!(asset("metalsharp", "macos", "x86_64"), None);
+        assert_eq!(asset("metalsharp", "linux", "aarch64"), None);
+        assert_eq!(asset("metalsharp", "windows", "x86_64"), None);
+    }
+
+    #[test]
     fn octomac_has_a_build_for_apple_silicon_macs_only() {
         assert_eq!(
             asset("octomac", "macos", "aarch64"),
@@ -419,7 +464,7 @@ mod tests {
                 .map(|app| app.name)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(shown("macos"), ["mgba", "octomac", "snes9x"]);
+        assert_eq!(shown("macos"), ["metalsharp", "mgba", "octomac", "snes9x"]);
         assert_eq!(shown("linux"), ["mgba", "snes9x"]);
         assert_eq!(shown("windows"), ["mgba", "snes9x"]);
     }
@@ -427,6 +472,7 @@ mod tests {
     #[test]
     fn names_resolve_only_for_the_apps_of_this_os() {
         assert!(lookup_app("mgba").is_ok());
+        assert_eq!(lookup_app("metalsharp").is_ok(), cfg!(target_os = "macos"));
         assert_eq!(lookup_app("octomac").is_ok(), cfg!(target_os = "macos"));
     }
 }

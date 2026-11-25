@@ -41,11 +41,16 @@ fn macos_only_apps_complete_on_macos_only() {
         .stdout
         .clone();
     let output = String::from_utf8(output).unwrap();
-    assert_eq!(
-        output.contains("octomac\tOctoWoW launcher"),
-        cfg!(target_os = "macos"),
-        "{output}"
-    );
+    for candidate in [
+        "metalsharp\tWindows games through Wine, FEX build",
+        "octomac\tOctoWoW launcher",
+    ] {
+        assert_eq!(
+            output.contains(candidate),
+            cfg!(target_os = "macos"),
+            "{output}"
+        );
+    }
 }
 
 #[test]
