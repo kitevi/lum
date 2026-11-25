@@ -203,18 +203,16 @@ fn list_shows_the_catalog_with_settings_state() {
 fn macos_only_apps_do_not_show_up() {
     let home = TempDir::new().unwrap();
 
-    for app in ["metalsharp", "octomac"] {
-        lum(&home)
-            .args(["apps", "list"])
-            .assert()
-            .success()
-            .stdout(contains(app).not());
-        lum(&home)
-            .args(["apps", "install", app])
-            .assert()
-            .failure()
-            .stderr(contains(format!("unknown app \"{app}\"")));
-    }
+    lum(&home)
+        .args(["apps", "list"])
+        .assert()
+        .success()
+        .stdout(contains("octomac").not());
+    lum(&home)
+        .args(["apps", "install", "octomac"])
+        .assert()
+        .failure()
+        .stderr(contains("unknown app \"octomac\""));
 }
 
 #[test]

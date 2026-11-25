@@ -37,15 +37,11 @@ _Avoid_: dotfiles, config sync
 
 | App | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| `metalsharp` | — | `MetalSharp-<version>-arm64-FEX.dmg` (Apple Silicon) | — |
 | `mgba` | `mGBA-<version>-appimage-{x64,arm64}.appimage` | `mGBA-<version>-macos.dmg` (universal) | `mGBA-<version>-win64.7z` |
 | `octomac` | — | `OctoMacLauncher-<version>-macOS-arm64.zip` (Apple Silicon) | — |
 | `snes9x` | `Snes9x-<version>-x86_64.AppImage` | `Snes9x-<version>-Mac.zip` (universal) | `snes9x-<version>-win32-x64.zip` |
 
-> [!WARNING]
-> **`metalsharp` breaks when MetalSharp merges its builds.** Upstream plans to ship its FEX and x86_64 builds as one download ([metalsharp/MetalSharp#837](https://github.com/metalsharp/MetalSharp/issues/837)). lum finds the FEX build by its file name, so once a release ships without `MetalSharp-<version>-arm64-FEX.dmg`, `install`, `update` and `sync` fail with `GitHub release missing asset`, and `status` shows the latest version as unknown. `sync` stops at the first app that fails, and metalsharp sorts first, so no app syncs until the catalog follows. Then point the build's `asset` in `catalog.rs` at the combined download, and drop its note, this warning and the one in the top-level README.
-
-mGBA, MetalSharp and snes9x publish on GitHub, OctoMacLauncher on gitlab.com (`noinstances/octomac`). lum reads each host's latest-release endpoint with the shared ureq agent, in `src/github.rs` and `src/gitlab.rs`; the `gitlab` crate would bring back reqwest, which ADR-0019 removed. A GitLab release's assets are links whose names are free text, so lum finds one by the file name that ends its URL.
+mGBA and snes9x publish on GitHub, OctoMacLauncher on gitlab.com (`noinstances/octomac`). lum reads each host's latest-release endpoint with the shared ureq agent, in `src/github.rs` and `src/gitlab.rs`; the `gitlab` crate would bring back reqwest, which ADR-0019 removed. A GitLab release's assets are links whose names are free text, so lum finds one by the file name that ends its URL.
 
 Owned settings:
 
@@ -63,13 +59,10 @@ Where the apps keep their config and saves:
 | `snes9x` config | `$XDG_CONFIG_HOME/snes9x/snes9x.conf` | user defaults | `snes9x.conf` beside the program |
 | `snes9x` saves | beside each ROM | `~/Library/Application Support/Snes9x` | `~\ROMs` (lum sets it) |
 | `octomac` config | — | user defaults (`local.octomaclauncher`) | — |
-| `metalsharp` config and saves | — | `~/.metalsharp` | — |
 
 mGBA reads `config.ini` from the XDG config folder on macOS too, not from `~/Library` (`mCoreConfigDirectory` upstream). snes9x 1.63 for Mac keeps its preferences in user defaults rather than a file, and always saves to Application Support (`saveInROMFolder` is fixed at 2 upstream), so lum owns nothing there and `lum backup create roms` does not cover those saves.
 
 OctoMacLauncher keeps its settings in user defaults too, so lum owns none of them, and its Wine runtime, prefix and logs in `~/Library/Application Support/OctoMacLauncher`; the game client is in a folder the player picks. Nothing it writes is inside the bundle, so an update or a reinstall loses nothing. It also updates itself: its Play page offers each new release, and **Update** replaces the bundle where it is, lum's copy included. lum's recorded version then lags until `lum apps update octomac` or `sync` installs the latest release over it. Its automatic update checks are a user-defaults setting too (`checkLauncherUpdates`), which lum leaves alone.
-
-MetalSharp is in the catalog as its FEX build only: its Wine is native Arm64 and runs x86 code through FEX rather than Rosetta. The x86_64 build is the same `MetalSharp.app` (`com.metalsharp.app`), so the two cannot sit side by side. MetalSharp keeps its settings (`configs/config.json`), Wine prefixes, bottles and logs in `~/.metalsharp`, which may link to a folder on an external drive, and its setup copies the Wine runtime the bundle carries (`Contents/Resources/MetalSharp-Wine.app`) to `~/.metalsharp/runtime`. Nothing it writes is inside the bundle, so an update or a reinstall loses nothing. It updates itself through Sparkle, from the FEX build's own feed (`appcast-fex.xml`), and Sparkle replaces the bundle where it is, lum's copy included. lum's recorded version then lags until `lum apps update metalsharp` or `sync` installs the latest release over it, downloading the 1.5 GB disk image again.
 
 Adding a setting is one `Setting { section, key, value }` in `catalog.rs`. A value is fixed text or the ROMs folder (`~/ROMs`), which `lum backup create roms` backs up; lum creates that folder when it sets it. Settings are hardcoded, like env aliases and the tools catalog, so one lum binary configures every machine the same way.
 
@@ -105,7 +98,7 @@ See [ADR 0025](../../docs/adr/0025-apps-install-upstream-builds-per-platform.md)
 
 ## Notes
 
-A build may carry a note that lum prints after installing it, for what lum cannot do itself. Snes9x's AppImage leaves glibmm out along with GLib, which the host provides, so it needs glibmm 2.4 (`libglibmm-2.4.so.1`) from the system; on Arch, `sudo pacman -S glibmm`. MetalSharp's repeats the warning under [Catalog](#catalog): lum cannot follow its FEX download once upstream merges the builds.
+A build may carry a note that lum prints after installing it, for what lum cannot do itself. Snes9x's AppImage leaves glibmm out along with GLib, which the host provides, so it needs glibmm 2.4 (`libglibmm-2.4.so.1`) from the system; on Arch, `sudo pacman -S glibmm`.
 
 ## Safety
 
@@ -122,6 +115,8 @@ A build may carry a note that lum prints after installing it, for what lum canno
 
 ## Implementation
 
-Integration tests live in `tests/apps_cli.rs` and run on Linux without network access. `LUM_APPS_TEST_ARTIFACT_<NAME>` points at a local artifact (synthetic AppImages for both apps, built by the test), `$LUM_APPS_DIR` and the XDG variables keep everything in a temporary folder, and `LUM_APPS_TEST_PROCESS_<NAME>` replaces the process name lum looks for, so an app running on the test machine cannot interfere. metalsharp and octomac have no Linux build, so they check that neither shows up there. The unpackers, both dialects, the kept-file swap, the desktop entry rewriting and the reading of a GitLab release have unit tests. The disk image and Start Menu paths only run on their own OS.
+Integration tests live in `tests/apps_cli.rs` and run on Linux without network access. `LUM_APPS_TEST_ARTIFACT_<NAME>` points at a local artifact (synthetic AppImages for both apps, built by the test), `$LUM_APPS_DIR` and the XDG variables keep everything in a temporary folder, and `LUM_APPS_TEST_PROCESS_<NAME>` replaces the process name lum looks for, so an app running on the test machine cannot interfere. octomac has no Linux build, so they check that it does not show up there. The unpackers, both dialects, the kept-file swap, the desktop entry rewriting and the reading of a GitLab release have unit tests. The disk image and Start Menu paths only run on their own OS.
 
 OpenEmu left the catalog when apps went cross-platform: it is macOS-only, Intel-only and has had no release since 2023. `lum apps` ignores an `OpenEmu.app` it installed earlier, and its state entry; delete them by hand. `lum backup openemu` went with it.
+
+MetalSharp left the catalog too. `lum apps` ignores a `MetalSharp.app` it installed earlier, and its state entry, so `list`, `sync` and `status` no longer see either; delete the bundle and the `metalsharp` entry in `apps-state.json` by hand. Its settings, Wine runtime and prefixes in `~/.metalsharp` are the app's own and stay.
