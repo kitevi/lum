@@ -181,6 +181,7 @@ Available apps:
 | App | Description | Settings lum keeps |
 | --- | --- | --- |
 | `mgba` | Game Boy Advance emulator | `updateAutoCheck=0`, since lum does the updating |
+| `octomac` | OctoWoW launcher (OctoMacLauncher), macOS on Apple Silicon only | None: its settings live in user defaults |
 | `snes9x` | Super Nintendo emulator | On Windows, saves go to `~\ROMs` instead of the program folder |
 
 Where things go:
@@ -207,6 +208,7 @@ Notes:
 - lum sets only the settings it lists, and touches only those lines of the config file. Everything else (controls, BIOS paths, recent games) stays yours. `lum apps sync` puts a changed lum setting back.
 - lum does not update an app, or change its settings, while it is running. Quit it first.
 - On Linux the AppImage is unpacked, so it runs without FUSE. Snes9x's AppImage still needs glibmm 2.4 from the system; on Arch, `sudo pacman -S glibmm`.
+- An app shows up only on the systems it is built for: `octomac` is not listed, synced or completed on Linux and Windows. lum's copy of OctoMacLauncher opens without the Gatekeeper steps its release notes describe. If you update it from its own Play page instead, lum's recorded version lags until the next `lum apps sync`.
 - `lum apps uninstall` removes the app and its launcher, and keeps its saves. Its settings stay too, except snes9x's on Windows, which live in its program folder.
 - Keep ROMs in `~/ROMs`: `lum backup create roms` backs them up with their saves, and `lum backup restore roms <code>` restores them on another machine. mGBA saves beside each ROM everywhere, and so does snes9x on Linux; on Windows lum points snes9x's saves at `~\ROMs`. Snes9x on macOS always saves to `~/Library/Application Support/Snes9x`, which that backup does not cover. Quit the emulator first.
 

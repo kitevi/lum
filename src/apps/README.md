@@ -1,6 +1,6 @@
 # Apps Subcommand
 
-`lum apps` installs a hardcoded catalog of desktop apps from their upstream GitHub releases on Linux, macOS and Windows, per user and without admin rights, and keeps the settings lum owns in each app's own config file.
+`lum apps` installs a hardcoded catalog of desktop apps from their upstream GitHub or GitLab releases on Linux, macOS and Windows, per user and without admin rights, and keeps the settings lum owns in each app's own config file.
 
 ## CLI
 
@@ -13,12 +13,12 @@ lum apps uninstall <app>
 lum apps update <app> [--force]
 ```
 
-`sync` is the all-apps operation: it installs missing apps, updates outdated ones and puts drifted settings back. `update` targets one app and reapplies its settings even when the app is up to date. There is no opt-in catalog behavior and no `--all` flag. `status` shows the installed version next to the latest release, which it looks up on GitHub.
+`sync` is the all-apps operation: it installs missing apps, updates outdated ones and puts drifted settings back. `update` targets one app and reapplies its settings even when the app is up to date. There is no opt-in catalog behavior and no `--all` flag. `status` shows the installed version next to the latest release, which it looks up on GitHub or GitLab.
 
 ## Language
 
 **Build**:
-One upstream release asset for one OS and set of CPU architectures, how it is packaged, and the settings lum owns for it. An app without a build for the current machine is unavailable there.
+One upstream release asset for one OS and set of CPU architectures, how it is packaged, and the settings lum owns for it. An app shows up only on the OSes it has a build for: elsewhere `list`, `sync` and completion leave it out, and lum does not know its name. On one of its OSes, a machine whose CPU has no build lists the app as unavailable.
 
 **Owned setting**:
 One key in an app's config file that lum keeps at a fixed value. lum never owns a whole config file, and edits only the lines of the keys it owns.
@@ -38,7 +38,10 @@ _Avoid_: dotfiles, config sync
 | App | Linux | macOS | Windows |
 | --- | --- | --- | --- |
 | `mgba` | `mGBA-<version>-appimage-{x64,arm64}.appimage` | `mGBA-<version>-macos.dmg` (universal) | `mGBA-<version>-win64.7z` |
+| `octomac` | — | `OctoMacLauncher-<version>-macOS-arm64.zip` (Apple Silicon) | — |
 | `snes9x` | `Snes9x-<version>-x86_64.AppImage` | `Snes9x-<version>-Mac.zip` (universal) | `snes9x-<version>-win32-x64.zip` |
+
+mGBA and snes9x publish on GitHub, OctoMacLauncher on gitlab.com (`noinstances/octomac`). lum reads each host's latest-release endpoint with the shared ureq agent, in `src/github.rs` and `src/gitlab.rs`; the `gitlab` crate would bring back reqwest, which ADR-0019 removed. A GitLab release's assets are links whose names are free text, so lum finds one by the file name that ends its URL.
 
 Owned settings:
 
@@ -55,8 +58,11 @@ Where the apps keep their config and saves:
 | `mgba` saves | beside each ROM | beside each ROM | beside each ROM |
 | `snes9x` config | `$XDG_CONFIG_HOME/snes9x/snes9x.conf` | user defaults | `snes9x.conf` beside the program |
 | `snes9x` saves | beside each ROM | `~/Library/Application Support/Snes9x` | `~\ROMs` (lum sets it) |
+| `octomac` config | — | user defaults (`local.octomaclauncher`) | — |
 
 mGBA reads `config.ini` from the XDG config folder on macOS too, not from `~/Library` (`mCoreConfigDirectory` upstream). snes9x 1.63 for Mac keeps its preferences in user defaults rather than a file, and always saves to Application Support (`saveInROMFolder` is fixed at 2 upstream), so lum owns nothing there and `lum backup create roms` does not cover those saves.
+
+OctoMacLauncher keeps its settings in user defaults too, so lum owns none of them, and its Wine runtime, prefix and logs in `~/Library/Application Support/OctoMacLauncher`; the game client is in a folder the player picks. Nothing it writes is inside the bundle, so an update or a reinstall loses nothing. It also updates itself: its Play page offers each new release, and **Update** replaces the bundle where it is, lum's copy included. lum's recorded version then lags until `lum apps update octomac` or `sync` installs the latest release over it. Its automatic update checks are a user-defaults setting too (`checkLauncherUpdates`), which lum leaves alone.
 
 Adding a setting is one `Setting { section, key, value }` in `catalog.rs`. A value is fixed text or the ROMs folder (`~/ROMs`), which `lum backup create roms` backs up; lum creates that folder when it sets it. Settings are hardcoded, like env aliases and the tools catalog, so one lum binary configures every machine the same way.
 
@@ -85,7 +91,7 @@ Lines are compared after trimming; `[section]` headers, and `#` or `;` comment l
 A build's package names the app's layout; the asset's extension says how it is packed.
 
 - **AppImage (Linux)**: lum unpacks the SquashFS image that follows the ELF runtime into `<root>/<app>` with `backhand`. It never mounts the image or runs the runtime, so the app starts without FUSE. Both upstream AppImages use the legacy runtime, which needs `libfuse.so.2`; Arch and other current distributions install only FUSE 3. The desktop entry is the AppImage's own, with `Exec` pointed at `AppRun` and `Icon` at the image's icon, so its file associations keep working. lum refreshes the MIME cache with `update-desktop-database` when it is installed.
-- **Bundle (macOS)**, from a `.dmg` or a `.zip`: a disk image is attached with `hdiutil`, and `ditto` copies the bundle out, keeping its symlinks and attributes; no maintained Rust crate reads HFS+. A zip holding the bundle at its root is extracted with the `zip` crate, which restores the bundle's symlinks and modes. Files lum downloads never get `com.apple.quarantine`.
+- **Bundle (macOS)**, from a `.dmg` or a `.zip`: a disk image is attached with `hdiutil`, and `ditto` copies the bundle out, keeping its symlinks and attributes; no maintained Rust crate reads HFS+. A zip holding the bundle at its root is extracted with the `zip` crate, which restores the bundle's symlinks and modes. Files lum downloads never get `com.apple.quarantine`, so OctoMacLauncher, which Apple has not notarized, opens without the first-launch steps its release notes give.
 - **Program folder (Windows)**, from a `.zip` or `.7z`: the archive's only folder, or its root when it holds the program's files directly, goes to `<root>/<app>`. `remove` drops files after unpacking: lum deletes mGBA's `portable.ini`, which would keep mGBA's settings beside `mGBA.exe`. `keep` lists what the program writes beside itself; an update carries those over from the previous install. For snes9x that is `snes9x.conf` and the folders its `Dir:` settings default to. Windows' own `WScript.Shell` writes the Start Menu shortcut, through PowerShell, as Scoop does.
 
 See [ADR 0025](../../docs/adr/0025-apps-install-upstream-builds-per-platform.md), [ADR 0026](../../docs/adr/0026-apps-own-settings-not-config-files.md), [ADR 0027](../../docs/adr/0027-app-settings-are-edited-line-by-line.md) and [ADR 0028](../../docs/adr/0028-program-folders-keep-what-the-program-writes.md).
@@ -109,6 +115,6 @@ A build may carry a note that lum prints after installing it, for what lum canno
 
 ## Implementation
 
-Integration tests live in `tests/apps_cli.rs` and run on Linux without network access. `LUM_APPS_TEST_ARTIFACT_<NAME>` points at a local artifact (synthetic AppImages for both apps, built by the test), `$LUM_APPS_DIR` and the XDG variables keep everything in a temporary folder, and `LUM_APPS_TEST_PROCESS_<NAME>` replaces the process name lum looks for, so an app running on the test machine cannot interfere. The unpackers, both dialects, the kept-file swap and the desktop entry rewriting have unit tests. The disk image and Start Menu paths only run on their own OS.
+Integration tests live in `tests/apps_cli.rs` and run on Linux without network access. `LUM_APPS_TEST_ARTIFACT_<NAME>` points at a local artifact (synthetic AppImages for both apps, built by the test), `$LUM_APPS_DIR` and the XDG variables keep everything in a temporary folder, and `LUM_APPS_TEST_PROCESS_<NAME>` replaces the process name lum looks for, so an app running on the test machine cannot interfere. octomac has no Linux build, so they check that it does not show up there. The unpackers, both dialects, the kept-file swap, the desktop entry rewriting and the reading of a GitLab release have unit tests. The disk image and Start Menu paths only run on their own OS.
 
 OpenEmu left the catalog when apps went cross-platform: it is macOS-only, Intel-only and has had no release since 2023. `lum apps` ignores an `OpenEmu.app` it installed earlier, and its state entry; delete them by hand. `lum backup openemu` went with it.

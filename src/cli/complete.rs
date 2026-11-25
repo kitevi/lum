@@ -23,8 +23,7 @@ pub(super) fn tools<P>(_: &P, _: &CompleteCtx<'_>) -> Candidates {
 }
 
 pub(super) fn apps<P>(_: &P, _: &CompleteCtx<'_>) -> Candidates {
-    crate::apps::catalog::CATALOG
-        .iter()
+    crate::apps::catalog::apps()
         .map(|app| Candidate::described(app.name, app.description))
         .collect()
 }

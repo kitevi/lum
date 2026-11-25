@@ -2,17 +2,26 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// An app lum installs from its upstream GitHub releases.
+/// An app lum installs from its upstream releases.
 pub(crate) struct AppSpec {
     pub name: &'static str,
     /// The app's own name, for the launchers lum names itself.
     pub title: &'static str,
     pub description: &'static str,
-    pub owner: &'static str,
-    pub repo: &'static str,
-    /// Release assets per platform. Without a build for this machine the app is
-    /// unavailable here.
+    pub source: Source,
+    /// Release assets per platform. The app shows up only on the OSes it has a
+    /// build for, and is unavailable on a CPU without one.
     pub builds: &'static [Build],
+}
+
+/// Where upstream publishes its releases.
+pub(crate) enum Source {
+    GitHub {
+        owner: &'static str,
+        repo: &'static str,
+    },
+    /// A gitlab.com project, by its path.
+    GitLab { project: &'static str },
 }
 
 /// One release asset, how to install it, and the settings lum keeps for it.
@@ -81,13 +90,15 @@ pub(crate) enum Value {
     RomsFolder,
 }
 
-pub(crate) const CATALOG: &[AppSpec] = &[
+const CATALOG: &[AppSpec] = &[
     AppSpec {
         name: "mgba",
         title: "mGBA",
         description: "Game Boy Advance emulator",
-        owner: "mgba-emu",
-        repo: "mgba",
+        source: Source::GitHub {
+            owner: "mgba-emu",
+            repo: "mgba",
+        },
         builds: &[
             Build {
                 os: "linux",
@@ -134,11 +145,35 @@ pub(crate) const CATALOG: &[AppSpec] = &[
         ],
     },
     AppSpec {
+        name: "octomac",
+        title: "OctoMacLauncher",
+        description: "OctoWoW launcher",
+        source: Source::GitLab {
+            project: "noinstances/octomac",
+        },
+        // Apple Silicon only. It keeps its settings in user defaults
+        // (local.octomaclauncher) rather than a file, so lum owns none, and
+        // writes nothing inside its bundle.
+        builds: &[Build {
+            os: "macos",
+            arch: &["aarch64"],
+            asset: "OctoMacLauncher-{version}-macOS-arm64.zip",
+            package: Package::Bundle {
+                bundle: "OctoMacLauncher.app",
+            },
+            process: "OctoMacLauncher",
+            settings: None,
+            note: None,
+        }],
+    },
+    AppSpec {
         name: "snes9x",
         title: "Snes9x",
         description: "Super Nintendo emulator",
-        owner: "snes9xgit",
-        repo: "snes9x",
+        source: Source::GitHub {
+            owner: "snes9xgit",
+            repo: "snes9x",
+        },
         builds: &[
             // Saves land beside each ROM unless the GTK build is told otherwise.
             Build {
@@ -246,6 +281,11 @@ fn snes9x_windows_config_file(app: &Path) -> Result<PathBuf> {
 }
 
 impl AppSpec {
+    /// Whether upstream builds the app for `os` at all, on any CPU.
+    fn built_for_os(&self, os: &str) -> bool {
+        self.builds.iter().any(|build| build.os == os)
+    }
+
     /// The build for this machine, if upstream ships one.
     pub(crate) fn build(&self) -> Option<&'static Build> {
         self.build_for(std::env::consts::OS, std::env::consts::ARCH)
@@ -288,19 +328,29 @@ fn test_env(kind: &str, spec: &AppSpec) -> String {
     )
 }
 
-pub(crate) fn lookup_app(name: &str) -> Result<&'static AppSpec> {
+/// The catalog on this OS: the apps upstream builds for it. The others do not
+/// show up here, not even as unavailable.
+pub(crate) fn apps() -> impl Iterator<Item = &'static AppSpec> {
     CATALOG
         .iter()
+        .filter(|app| app.built_for_os(std::env::consts::OS))
+}
+
+pub(crate) fn lookup_app(name: &str) -> Result<&'static AppSpec> {
+    apps()
         .find(|app| app.name == name)
-        .ok_or_else(|| crate::cli::unknown_name("app", name, CATALOG.iter().map(|app| app.name)))
+        .ok_or_else(|| crate::cli::unknown_name("app", name, apps().map(|app| app.name)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// An app from the whole catalog, whatever OS runs the test.
     fn asset(app: &str, os: &str, arch: &str) -> Option<&'static str> {
-        lookup_app(app)
+        CATALOG
+            .iter()
+            .find(|spec| spec.name == app)
             .unwrap()
             .build_for(os, arch)
             .map(|build| build.asset)
@@ -347,5 +397,36 @@ mod tests {
             asset("snes9x", "windows", "x86_64"),
             Some("snes9x-{version}-win32-x64.zip")
         );
+    }
+
+    #[test]
+    fn octomac_has_a_build_for_apple_silicon_macs_only() {
+        assert_eq!(
+            asset("octomac", "macos", "aarch64"),
+            Some("OctoMacLauncher-{version}-macOS-arm64.zip")
+        );
+        assert_eq!(asset("octomac", "macos", "x86_64"), None);
+        assert_eq!(asset("octomac", "linux", "x86_64"), None);
+        assert_eq!(asset("octomac", "windows", "x86_64"), None);
+    }
+
+    #[test]
+    fn apps_show_up_only_on_the_oses_they_are_built_for() {
+        let shown = |os: &str| {
+            CATALOG
+                .iter()
+                .filter(|app| app.built_for_os(os))
+                .map(|app| app.name)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shown("macos"), ["mgba", "octomac", "snes9x"]);
+        assert_eq!(shown("linux"), ["mgba", "snes9x"]);
+        assert_eq!(shown("windows"), ["mgba", "snes9x"]);
+    }
+
+    #[test]
+    fn names_resolve_only_for_the_apps_of_this_os() {
+        assert!(lookup_app("mgba").is_ok());
+        assert_eq!(lookup_app("octomac").is_ok(), cfg!(target_os = "macos"));
     }
 }

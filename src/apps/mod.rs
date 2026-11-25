@@ -33,7 +33,7 @@ fn list() -> Result<()> {
         "{:<10} {:<14} {:<10} {:<12} DESCRIPTION",
         "APP", "STATE", "VERSION", "SETTINGS"
     );
-    for spec in catalog::CATALOG {
+    for spec in catalog::apps() {
         let (state, version, settings) = match spec.build() {
             None => ("unavailable", None, None),
             Some(build) => {
@@ -61,7 +61,7 @@ fn list() -> Result<()> {
             spec.description
         );
     }
-    for spec in catalog::CATALOG {
+    for spec in catalog::apps() {
         if let Some(build) = spec.build() {
             for path in state::foreign_copies(spec, build)? {
                 println!("foreign: {} ({})", path.display(), spec.name);
@@ -171,7 +171,7 @@ fn update_cmd(app: &str, force: bool) -> Result<()> {
 
 fn sync_cmd(dry_run: bool) -> Result<()> {
     let (mut installed, mut updated, mut up_to_date, mut configured, mut skipped) = (0, 0, 0, 0, 0);
-    for spec in catalog::CATALOG {
+    for spec in catalog::apps() {
         let Some(build) = spec.build() else {
             println!("\u{2022} {}: no build for {}", spec.name, platform());
             skipped += 1;

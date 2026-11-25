@@ -2,7 +2,7 @@ use std::{fs, io, path::Path, time::SystemTime};
 
 use anyhow::{Context, Result, bail};
 
-use super::catalog::{self, AppSpec, Build, Package};
+use super::catalog::{self, AppSpec, Build, Package, Source};
 use super::state::{self, AppState, ArtifactState};
 use super::{launcher, package};
 
@@ -26,8 +26,30 @@ pub(crate) fn resolve_latest(spec: &AppSpec, build: &Build) -> Result<AppArtifac
             download_url: path,
         });
     }
-    let release = crate::github::latest_release(spec.owner, spec.repo)?;
-    let tag = release.tag_name.as_deref().unwrap_or_default().trim();
+    match spec.source {
+        Source::GitHub { owner, repo } => {
+            let release = crate::github::latest_release(owner, repo)?;
+            let tag = release.tag_name.as_deref().unwrap_or_default();
+            artifact(spec, build, tag, |name| release.asset_url(name))
+        }
+        Source::GitLab { project } => {
+            let release = crate::gitlab::latest_release(project)?;
+            artifact(spec, build, &release.tag_name, |name| {
+                release.asset_url(name)
+            })
+        }
+    }
+}
+
+/// The asset of `build` in the release tagged `tag`; `asset_url` looks up its
+/// download URL by file name.
+fn artifact<'a>(
+    spec: &AppSpec,
+    build: &Build,
+    tag: &str,
+    asset_url: impl FnOnce(&str) -> Result<&'a str>,
+) -> Result<AppArtifact> {
+    let tag = tag.trim();
     let version = tag.trim_start_matches('v').to_owned();
     if version.is_empty() {
         bail!(
@@ -36,7 +58,7 @@ pub(crate) fn resolve_latest(spec: &AppSpec, build: &Build) -> Result<AppArtifac
         );
     }
     let asset_name = build.asset.replace("{version}", &version);
-    let download_url = release.asset_url(&asset_name)?.to_owned();
+    let download_url = asset_url(&asset_name)?.to_owned();
     Ok(AppArtifact {
         version,
         release_tag: tag.to_owned(),

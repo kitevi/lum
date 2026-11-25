@@ -200,6 +200,22 @@ fn list_shows_the_catalog_with_settings_state() {
 }
 
 #[test]
+fn macos_only_apps_do_not_show_up() {
+    let home = TempDir::new().unwrap();
+
+    lum(&home)
+        .args(["apps", "list"])
+        .assert()
+        .success()
+        .stdout(contains("octomac").not());
+    lum(&home)
+        .args(["apps", "install", "octomac"])
+        .assert()
+        .failure()
+        .stderr(contains("unknown app \"octomac\""));
+}
+
+#[test]
 fn status_reports_a_missing_app_and_its_settings() {
     let home = TempDir::new().unwrap();
 

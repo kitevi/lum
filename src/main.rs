@@ -8,6 +8,7 @@ mod ffmpeg;
 mod fonts;
 mod git_id;
 mod github;
+mod gitlab;
 mod logging;
 mod net;
 mod paths;

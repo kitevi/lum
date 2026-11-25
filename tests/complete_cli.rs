@@ -34,6 +34,21 @@ fn catalog_names_complete_with_their_descriptions() {
 }
 
 #[test]
+fn macos_only_apps_complete_on_macos_only() {
+    let config = TempDir::new().unwrap();
+    let output = complete(&config, "lum apps install ")
+        .get_output()
+        .stdout
+        .clone();
+    let output = String::from_utf8(output).unwrap();
+    assert_eq!(
+        output.contains("octomac\tOctoWoW launcher"),
+        cfg!(target_os = "macos"),
+        "{output}"
+    );
+}
+
+#[test]
 fn identities_complete_from_the_git_id_config() {
     let config = TempDir::new().unwrap();
     let folder = config.path().join("work");
