@@ -1,6 +1,6 @@
 # Radio Playback Uses ffplay
 
-Status: Accepted (YouTube station resolution removed by ADR-0031). ADR-0014 adds a runner that supervises ffplay, and ADR-0022 brings pause back through the tray.
+Status: Accepted (YouTube station resolution removed by ADR-0031). ADR-0014 adds a runner that supervises ffplay, ADR-0022 brings pause back through the tray, and ADR-0036 takes ffplay from `$PATH` only.
 
 ## Context
 
@@ -36,7 +36,7 @@ Lum does not own:
 - a custom radio IPC protocol
 - a player process of its own: ffplay plays, and the runner of ADR-0014 only supervises it
 
-`ffplay` is resolved from `$PATH` first. If unavailable, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary and the ffmpeg provisioning path extracts `ffplay` when the downloaded archive includes it.
+`ffplay` is resolved from `$PATH` only; lum never downloads it (ADR-0036).
 
 ## Consequences
 
@@ -48,6 +48,6 @@ This greatly reduces implementation surface area and dependency surface for radi
 
 `status` is based on lum's remembered state plus a process identity/aliveness check. Lum verifies the remembered PID still looks like the runner (like ffplay, for state written before runners existed) and, when start time is known, that it is the same process instance. It is intentionally simpler than a full playback telemetry channel.
 
-If a platform's managed ffmpeg archive does not include `ffplay`, radio playback requires a user-installed ffplay. Do not fall back to a custom Rust audio stack just to cover that case.
+Radio playback requires a user-installed ffplay. Do not fall back to a custom Rust audio stack to cover machines without one.
 
 If future requirements need richer control, prefer extending the external-player adapter first. Reopening a custom internal Radio player or pure Rust playback stack requires a new ADR.

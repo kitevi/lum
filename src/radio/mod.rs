@@ -91,6 +91,8 @@ fn random_station_in(
 }
 
 fn play(station: Station) -> Result<()> {
+    // Without ffplay nothing could play: fail before the current station is stopped.
+    player::find_ffplay()?;
     let _ = stop_existing();
     start(station)?;
     println!("playing {} {}", station.code, station.name);

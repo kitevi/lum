@@ -1,5 +1,7 @@
 # ffmpeg Auto-Provisioning
 
+Status: Superseded by ADR-0036: lum no longer downloads ffmpeg or ffplay.
+
 Lum resolves ffmpeg through the same broad dependency flow as yt-dlp: prefer a system binary on `$PATH`, fall back to a managed copy in `data_dir()/deps/`, then fail with install guidance.
 
 The managed copy is supported on Linux, Windows and macOS, for x86_64 and aarch64. Linux and Windows builds come from BtbN/FFmpeg-Builds using GPL, non-shared/static assets:

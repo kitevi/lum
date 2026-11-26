@@ -4,7 +4,6 @@ mod backup;
 mod cli;
 mod display;
 mod env;
-mod ffmpeg;
 mod fonts;
 mod git_id;
 mod github;

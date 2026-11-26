@@ -30,7 +30,7 @@ The RadCap entries use raw IP URLs, so they are the catalog entries most likely 
 
 ## Playback Stack
 
-Radio playback uses the existing ffmpeg dependency path:
+Radio playback runs `ffplay`, which comes with ffmpeg:
 
 - A station runs under a hidden `__radio_direct_runner` supervisor process that loops `ffplay` until stopped.
 - `ffplay` plays the station's stream URL directly; radio never resolves a page URL.
@@ -43,7 +43,7 @@ Radio playback uses the existing ffmpeg dependency path:
 - Every station also gets `-infbuf -af adelay=delays=5000:all=1` (see ADR-0020): 5s of leading silence while an uncapped input queue fills, so streams that arrive at exactly realtime (the RadCap hosts) can jitter without audible gaps.
 - ffplay runs at `-loglevel warning`, and the runner forwards its stderr to `lum.log` as `warn` events. Healthy streams log nothing.
 
-`ffplay` is preferred from `$PATH`. If it is not on `$PATH`, lum looks for a provisioned `ffplay` next to its managed ffmpeg binary.
+`ffplay` comes from `$PATH` only; lum never downloads it (ADR-0036). Without it, `play` and `random` fail before they stop the current station or start a runner, and the runner looks it up again before every attempt.
 
 The old pure-Rust foreground audio path is no longer the product direction for `lum radio`. Do not reintroduce CPAL/Symphonia/ring-buffer terminal playback unless an ADR reverses this decision.
 

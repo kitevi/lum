@@ -108,10 +108,6 @@ pub(crate) fn repos_mirror_watch_state_file() -> Result<PathBuf> {
     state_dir("repos-watch-state.json")
 }
 
-pub(crate) fn yt_deps_dir() -> Result<PathBuf> {
-    data_dir("deps")
-}
-
 /// What `lum net on` changed, so `lum net off` can undo exactly that.
 pub(crate) fn net_shaping_state_file() -> Result<PathBuf> {
     state_dir("net-shaping.json")

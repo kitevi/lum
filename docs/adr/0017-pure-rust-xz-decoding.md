@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. ADR-0036 removed the ffmpeg download, so `lum tools` is the only tar.xz consumer left.
 
 ## Context
 

@@ -155,6 +155,23 @@ fn radio_takes_no_bare_station_code() {
 }
 
 #[test]
+fn radio_fails_before_starting_anything_without_ffplay() {
+    let state = tempfile::TempDir::new().unwrap();
+    for args in [&["radio", "play", "concr"][..], &["radio", "random"][..]] {
+        Command::cargo_bin("lum")
+            .unwrap()
+            .env("PATH", "")
+            .env("XDG_STATE_HOME", state.path())
+            .args(args)
+            .assert()
+            .failure()
+            .code(1)
+            .stderr(predicates::str::contains("ffplay not found on PATH"));
+    }
+    assert!(!state.path().join("lum").join("radio-player.json").exists());
+}
+
+#[test]
 fn invalid_flag_exits_2_with_stderr_diagnostic() {
     Command::cargo_bin("lum")
         .unwrap()

@@ -63,14 +63,6 @@ pub(crate) fn download_asset(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Download "url" into memory, without ureq's default body size limit.
-pub(crate) fn download_bytes(url: &str) -> Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    io::Read::read_to_end(&mut open(url)?, &mut bytes)
-        .with_context(|| format!("failed to download {url}"))?;
-    Ok(bytes)
-}
-
 fn open(url: &str) -> Result<ureq::BodyReader<'static>> {
     Ok(agent()
         .get(url)

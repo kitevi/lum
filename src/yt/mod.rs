@@ -1,5 +1,4 @@
 pub mod args;
-mod deps;
 pub mod rss;
 
 use std::path::Path;
@@ -7,10 +6,12 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::cli::YtCommand;
-use crate::ffmpeg;
 
 pub fn run(command: YtCommand) -> Result<()> {
-    let yt_dlp = deps::resolve_yt_dlp()?;
+    // lum never downloads yt-dlp or ffmpeg: a missing one stops the command
+    // before it does anything (ADR-0036).
+    let yt_dlp =
+        which::which("yt-dlp").context("yt-dlp not found on PATH; install it to use lum yt")?;
 
     match command {
         YtCommand::Audio { urls } => {
@@ -19,7 +20,10 @@ pub fn run(command: YtCommand) -> Result<()> {
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
         }
         YtCommand::Video { height, urls } => {
-            check_ffmpeg()?;
+            // yt-dlp runs ffmpeg from PATH to merge video and audio.
+            which::which("ffmpeg").context(
+                "ffmpeg not found on PATH; lum yt video needs it to merge video and audio",
+            )?;
             let args = args::video_args(height);
             let dest_dir = output_dirs::video_dir();
             run_yt_dlp(&yt_dlp, &args, &dest_dir, &urls)
@@ -55,12 +59,6 @@ pub fn run(command: YtCommand) -> Result<()> {
             Ok(())
         }
     }
-}
-
-fn check_ffmpeg() -> Result<()> {
-    ffmpeg::resolve().map(|_| ()).map_err(|error| {
-        anyhow::anyhow!("ffmpeg is not available: {error}\n\nInstall it, then rerun the command.")
-    })
 }
 
 fn run_yt_dlp(

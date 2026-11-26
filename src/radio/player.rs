@@ -1,7 +1,7 @@
 use std::{
     ffi::OsStr,
     io::{BufRead, BufReader},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
 };
@@ -11,9 +11,14 @@ use shared_child::SharedChild;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 
 use super::playback::Playback;
-use crate::ffmpeg;
 
 pub(super) struct ExternalPlayer;
+
+/// ffplay from `PATH`; lum never downloads it (ADR-0036).
+pub(super) fn find_ffplay() -> Result<PathBuf> {
+    which::which("ffplay")
+        .context("ffplay not found on PATH; install ffmpeg, which includes it, to play radio")
+}
 
 /// How one ffplay session ended.
 #[derive(Debug, PartialEq, Eq)]
@@ -64,7 +69,7 @@ impl ExternalPlayer {
     /// not as a failure. The reconnect arguments let dropped or stalled
     /// connections heal without exiting.
     pub(super) fn play_until_exit(url: String, playback: &Playback) -> Result<Outcome> {
-        let ffplay = ffmpeg::resolve_ffplay()?;
+        let ffplay = find_ffplay()?;
         let ffplay = ffplay.to_string_lossy().into_owned();
         let mut command = ffplay_command(ffplay, &url);
         command.stderr(Stdio::piped());
@@ -443,7 +448,7 @@ mod tests {
     }
 
     fn spawn_probe_ffplay(url: &str) -> Result<PlayerProcess> {
-        let ffplay = ffmpeg::resolve_ffplay()?;
+        let ffplay = find_ffplay()?;
         let child = ffplay_command(ffplay, url)
             .spawn()
             .context("failed to start ffplay probe")?;

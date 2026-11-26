@@ -13,15 +13,18 @@ lum yt rss [--id-only] [--videos-only] <URL...>  # Channel RSS feed URL(s)
 
 ## Dependencies
 
-- **yt-dlp** — required. If not on `$PATH`, lum auto-provisions it to `data_dir()/deps/` (see ADR 0005).
-- **ffmpeg** — required for video muxing. If not on `$PATH`, lum auto-provisions it to `data_dir()/deps/`: from BtbN FFmpeg-Builds on Linux and Windows, from the martin-riedl snapshot builds on macOS (ADR-0009).
+Both come from `$PATH`; lum never downloads them (ADR-0036). A command that needs a missing one fails before it does anything.
+
+- **yt-dlp** — required by every command.
+- **ffmpeg** — required by `video`, where yt-dlp merges video and audio with it. `audio`, `album` and `rss` don't need it.
+
+Earlier versions downloaded both into `data_dir()/deps/`. lum ignores those copies now; delete the folder by hand.
 
 ## Architecture
 
 - `rss.rs` — video/channel classification (playlists rejected), channel-ID resolution via a single `yt-dlp -J --flat-playlist` fetch, and feed-URL builders (per-channel `channel_id` feed plus long-form-only `UULF` playlist feed)
-- `mod.rs` — CLI dispatch, ffmpeg check, yt-dlp invocation with `-P` for output directory
+- `mod.rs` — CLI dispatch, the yt-dlp and ffmpeg lookups on `$PATH`, yt-dlp invocation with `-P` for output directory
 - `args.rs` — argument construction for each subcommand (base flags, format selectors, output templates, metadata cleanup)
-- `deps.rs` — yt-dlp binary resolution (`$PATH` → auto-provisioned → error)
 
 ## Album folder naming
 
